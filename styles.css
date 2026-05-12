@@ -217,6 +217,46 @@ h1 {
   width: 100%;
 }
 
+
+.home-live-section {
+  background: var(--trace-panel);
+  box-shadow: 0 0 0 1px rgba(245, 243, 239, 0.08);
+  min-height: 12rem;
+  padding: 0.65rem 0.75rem 0.55rem;
+  position: relative;
+}
+
+.home-live-section::after {
+  border: 1px solid rgba(204, 127, 170, 0.72);
+  content: "";
+  inset: 0.55rem;
+  pointer-events: none;
+  position: absolute;
+}
+
+.home-live-heading {
+  color: rgba(43, 43, 43, 0.68);
+  display: flex;
+  font-family: var(--ui);
+  font-size: var(--type-level-3);
+  justify-content: space-between;
+  letter-spacing: var(--track-section);
+  line-height: 1.2;
+  margin-bottom: 0.35rem;
+  position: relative;
+  text-transform: uppercase;
+  z-index: 1;
+}
+
+#home-live-trace {
+  display: block;
+  height: auto;
+  min-height: 9rem;
+  position: relative;
+  width: 100%;
+  z-index: 1;
+}
+
 textarea {
   background: transparent;
   border: 0;
@@ -224,7 +264,7 @@ textarea {
   border-top: 1px solid var(--line-soft);
   color: var(--primary);
   font-family: var(--stamp);
-  font-size: 12pt;
+  font-size: 18pt;
   letter-spacing: 0.01em;
   line-height: 1.25;
   min-height: 7.4rem;

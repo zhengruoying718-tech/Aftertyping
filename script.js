@@ -5,6 +5,7 @@ const micButton = document.querySelector("#enable-mic");
 const soundStatus = document.querySelector("#sound-status");
 const characterCount = document.querySelector("#character-count");
 const liveTrace = document.querySelector("#live-trace");
+const homeLiveTrace = document.querySelector("#home-live-trace");
 const homeStage = document.querySelector("#home-stage");
 const resultStage = document.querySelector("#result-stage");
 const sourceText = document.querySelector("#source-text");
@@ -21,6 +22,8 @@ const LINE_HEIGHT = 58;
 const BASE_ADVANCE = 24;
 const SPACE_ADVANCE = 34;
 const ACTIVE_MS = 1300;
+const HOME_TRACE_WIDTH = 1120;
+const HOME_TRACE_HEIGHT = 230;
 const TRACE_FONT = '"Stamp Typo Regular", "Courier New", monospace';
 const UI_FONT = 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
 
@@ -77,6 +80,7 @@ function resetState() {
   showHomeStage();
   textarea.focus();
   renderLiveTrace();
+  renderHomeTrace();
 }
 
 function isPrintableKey(event) {
@@ -123,6 +127,7 @@ function recordKey(event) {
 
   state.lastAt = now;
   renderLiveTrace();
+  renderHomeTrace();
 }
 
 function addTypedTraceItem(character, now, delta, gap) {
@@ -378,7 +383,129 @@ function drawPanelAnnotations() {
 function scheduleSettleRender() {
   cancelAnimationFrame(settleFrame);
   if (frozen || !state.traceItems.some((item) => performance.now() - item.createdAt < ACTIVE_MS)) return;
-  settleFrame = requestAnimationFrame(() => window.setTimeout(renderLiveTrace, 180));
+  settleFrame = requestAnimationFrame(() => window.setTimeout(() => {
+    renderLiveTrace();
+    renderHomeTrace();
+  }, 180));
+}
+
+function renderHomeTrace() {
+  homeLiveTrace.replaceChildren();
+  homeSvgRect(0, 0, HOME_TRACE_WIDTH, HOME_TRACE_HEIGHT, COLORS.panel, "none");
+  for (let y = 26; y < HOME_TRACE_HEIGHT - 24; y += 16) {
+    homeSvgLine(28, y, HOME_TRACE_WIDTH - 28, y, COLORS.rule, { width: 0.8, opacity: 0.52 });
+  }
+
+  const now = performance.now();
+  let x = 42;
+  let y = 92;
+  const maxX = HOME_TRACE_WIDTH - 42;
+
+  if (!state.traceItems.length) {
+    homeSvgText("trace forms here while typing", 42, 126, {
+      size: 26,
+      fill: COLORS.text,
+      family: TRACE_FONT,
+      opacity: 0.38,
+    });
+    return;
+  }
+
+  state.traceItems.forEach((item, index) => {
+    const advance = item.normalized === "space" ? 26 : 19;
+    x += item.pauseGap ? Math.min(item.pauseGap * 0.55, 122) : 0;
+
+    if (x > maxX - advance) {
+      x = 42;
+      y += 42;
+    }
+
+    if (y > HOME_TRACE_HEIGHT - 34) {
+      y = 92 + ((index % 3) * 42);
+      x = 42 + ((index % 11) * 9);
+    }
+
+    if (item.pauseGap) {
+      const gapWidth = Math.min(Math.max(item.pauseGap * 0.55 - 12, 18), 104);
+      homeSvgLine(Math.max(42, x - gapWidth), y - 19, x - 8, y - 19, COLORS.text, { width: 1, opacity: 0.24, dasharray: "3 7" });
+    }
+
+    if (item.normalized === "space") {
+      x += advance;
+      return;
+    }
+
+    const active = !frozen && now - item.createdAt < ACTIVE_MS;
+    const fill = item.deleted ? COLORS.deleted : item.repeated ? COLORS.repeated : active ? COLORS.active : COLORS.settled;
+    const opacity = item.deleted ? 0.66 : item.repeated ? 0.96 : active ? 1 : 0.76;
+    const size = item.repeated ? 29 : 27;
+    const itemY = item.deleted ? y + 8 : y;
+    const itemX = item.repeated ? x - 3 : x;
+
+    if (item.repeated) {
+      homeSvgText(item.character, itemX + 4, itemY + 1, { size, fill: COLORS.active, family: TRACE_FONT, opacity: 0.35 });
+      homeSvgText(item.character, itemX + 7, itemY + 1, { size, fill: COLORS.repeated, family: TRACE_FONT, opacity: 0.24 });
+    }
+
+    homeSvgText(item.character, itemX, itemY, { size, fill, family: TRACE_FONT, opacity });
+
+    if (item.deleted) {
+      homeSvgLine(itemX - 1, itemY - 10, itemX + 18, itemY - 17, COLORS.text, { width: 1.2, opacity: 0.36 });
+    }
+
+    x += item.repeated ? advance * 0.72 : advance;
+  });
+}
+
+function homeSvgEl(tag, attributes = {}) {
+  const node = document.createElementNS(SVG_NS, tag);
+  Object.entries(attributes).forEach(([key, value]) => {
+    if (value !== undefined && value !== null) node.setAttribute(key, String(value));
+  });
+  homeLiveTrace.appendChild(node);
+  return node;
+}
+
+function homeSvgRect(x, y, width, height, fill = "none", stroke = "none", options = {}) {
+  return homeSvgEl("rect", {
+    x,
+    y,
+    width,
+    height,
+    fill,
+    stroke,
+    opacity: options.opacity,
+    "stroke-dasharray": options.dasharray,
+  });
+}
+
+function homeSvgLine(x1, y1, x2, y2, stroke, options = {}) {
+  return homeSvgEl("line", {
+    x1,
+    y1,
+    x2,
+    y2,
+    stroke,
+    "stroke-width": options.width || 1,
+    opacity: options.opacity,
+    "stroke-dasharray": options.dasharray,
+    "stroke-linecap": "round",
+  });
+}
+
+function homeSvgText(content, x, y, options = {}) {
+  const node = homeSvgEl("text", {
+    x,
+    y,
+    fill: options.fill || COLORS.text,
+    opacity: options.opacity,
+    "font-family": options.family || UI_FONT,
+    "font-size": options.size || 14,
+    "font-weight": options.weight || 400,
+    "letter-spacing": options.spacing,
+  });
+  node.textContent = content;
+  return node;
 }
 
 function svgEl(tag, attributes = {}) {
@@ -440,6 +567,7 @@ textarea.addEventListener("keydown", recordKey);
 textarea.addEventListener("input", () => {
   updateCountAndButton();
   renderLiveTrace();
+  renderHomeTrace();
 });
 leaveButton.addEventListener("click", holdTrace);
 typeAgainButton.addEventListener("click", resetState);
@@ -452,3 +580,4 @@ window.addEventListener("beforeunload", () => {
 });
 
 renderLiveTrace();
+renderHomeTrace();
