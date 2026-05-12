@@ -13,14 +13,21 @@
   --trace-panel: #f2a1cc;
   --trace-rule: #cc7faa;
   --active: #ff6a2b;
-  --deleted: rgba(189, 184, 178, 0.42);
+  --deleted: rgba(138, 120, 131, 0.68);
   --repeated: #d83b1d;
   --line: rgba(245, 243, 239, 0.34);
   --line-soft: rgba(245, 243, 239, 0.16);
   --stamp: "Stamp Typo Regular", "Courier New", monospace;
   --ui: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --page-width: min(100rem, 100%);
+  --outer-page-width: min(100rem, 100%);
+  --main-stage-width: min(68rem, 100%);
   --page-padding: clamp(1.1rem, 2.5vw, 2.3rem);
+  --type-level-1: 16pt;
+  --type-level-2: 14pt;
+  --type-level-3: 12pt;
+  --track-label: 0.14em;
+  --track-section: 0.1em;
+  --track-body: 0.02em;
 }
 
 * {
@@ -53,8 +60,8 @@ button {
   background: var(--primary);
   color: var(--black);
   cursor: pointer;
-  font-size: 0.72rem;
-  letter-spacing: 0.16em;
+  font-size: var(--type-level-3);
+  letter-spacing: var(--track-section);
   min-height: 2.7rem;
   padding: 0.78rem 1rem;
   text-transform: uppercase;
@@ -77,7 +84,7 @@ button.secondary {
 }
 
 button.small {
-  font-size: 0.65rem;
+  font-size: var(--type-level-3);
   min-height: 2.35rem;
   padding: 0.62rem 0.8rem;
 }
@@ -113,13 +120,13 @@ textarea:focus-visible {
   min-height: 100vh;
   place-items: center;
   padding: var(--page-padding);
-  width: var(--page-width);
+  width: var(--outer-page-width);
 }
 
 .home-composition {
   display: grid;
   gap: clamp(3.2rem, 8vw, 7rem);
-  width: 100%;
+  width: var(--main-stage-width);
 }
 
 .home-intro {
@@ -143,7 +150,14 @@ button {
 
 .kicker,
 .panel-index,
-.note-number,
+.note-number {
+  color: var(--secondary);
+  font-size: var(--type-level-1);
+  letter-spacing: var(--track-label);
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
 .trace-status,
 .annotation,
 .legend,
@@ -151,9 +165,9 @@ button {
 .count-line,
 .result-meta {
   color: var(--secondary);
-  font-size: 0.66rem;
-  letter-spacing: 0.15em;
-  line-height: 1.55;
+  font-size: var(--type-level-3);
+  letter-spacing: var(--track-section);
+  line-height: 1.2;
   text-transform: uppercase;
 }
 
@@ -171,7 +185,7 @@ h1 {
   font-family: var(--stamp);
   font-size: clamp(4.9rem, 12vw, 10.8rem);
   font-weight: 400;
-  letter-spacing: -0.085em;
+  letter-spacing: -0.05em;
   line-height: 0.78;
   margin: 0;
 }
@@ -180,17 +194,18 @@ h1 {
   color: var(--primary);
   font-family: Georgia, "Times New Roman", serif;
   font-size: clamp(1rem, 1.45vw, 1.32rem);
-  line-height: 1.6;
+  line-height: 1.35;
   margin: 0;
-  max-width: 29rem;
+  max-width: none;
+  white-space: nowrap;
 }
 
 .description {
   border-top: 1px solid var(--line-soft);
   color: var(--secondary);
-  font-size: clamp(0.78rem, 1vw, 0.88rem);
-  letter-spacing: 0.02em;
-  line-height: 1.75;
+  font-size: var(--type-level-2);
+  letter-spacing: var(--track-body);
+  line-height: var(--type-level-2);
   margin: 0;
   max-width: 33rem;
   padding-top: 1rem;
@@ -209,8 +224,9 @@ textarea {
   border-top: 1px solid var(--line-soft);
   color: var(--primary);
   font-family: var(--stamp);
-  font-size: clamp(1.14rem, 2vw, 1.72rem);
-  line-height: 1.35;
+  font-size: var(--type-level-1);
+  letter-spacing: 0.01em;
+  line-height: 1.25;
   min-height: 7.4rem;
   padding: 1.1rem 0.1rem;
   resize: none;
@@ -229,7 +245,7 @@ textarea::placeholder {
   align-items: center;
   border-top: 1px solid var(--line-soft);
   display: flex;
-  gap: clamp(0.7rem, 1.5vw, 1.25rem);
+  gap: clamp(0.75rem, 1.35vw, 1.1rem);
   justify-content: flex-start;
   overflow-x: auto;
   padding-top: 0.9rem;
@@ -269,7 +285,7 @@ textarea::placeholder {
   margin: 0 auto;
   min-height: 100vh;
   padding: var(--page-padding);
-  width: var(--page-width);
+  width: var(--outer-page-width);
 }
 
 .result-composition {
@@ -293,8 +309,9 @@ textarea::placeholder {
   align-self: center;
   border-top: 1px solid var(--line-soft);
   color: var(--secondary);
-  font-size: 0.72rem;
-  line-height: 1.6;
+  font-size: var(--type-level-2);
+  letter-spacing: var(--track-body);
+  line-height: 1.25;
   max-width: 13rem;
   padding-top: 0.75rem;
 }
@@ -333,10 +350,10 @@ textarea::placeholder {
 .trace-header h2 {
   color: var(--secondary);
   font-family: var(--ui);
-  font-size: 0.72rem;
+  font-size: var(--type-level-2);
   font-weight: 400;
-  letter-spacing: 0.1em;
-  line-height: 1.55;
+  letter-spacing: var(--track-section);
+  line-height: 1.2;
   margin: 0.18rem 0 0;
   text-transform: uppercase;
 }
@@ -451,9 +468,9 @@ textarea::placeholder {
 .source-text {
   color: var(--primary);
   font-family: var(--stamp);
-  font-size: clamp(1rem, 1.6vw, 1.5rem);
-  letter-spacing: -0.015em;
-  line-height: 1.45;
+  font-size: var(--type-level-2);
+  letter-spacing: 0.01em;
+  line-height: 1.25;
   max-width: 47rem;
   opacity: 0.72;
   text-transform: none;
@@ -513,6 +530,10 @@ textarea::placeholder {
   .home-stage,
   .result-stage {
     padding: 1rem;
+  }
+
+  .statement {
+    white-space: normal;
   }
 
   .trace-header,

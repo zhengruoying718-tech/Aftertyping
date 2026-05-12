@@ -31,7 +31,7 @@ const COLORS = {
   active: "#FF6A2B",
   settled: "#F5F3EF",
   repeated: "#D83B1D",
-  deleted: "#BDB8B2",
+  deleted: "#8A7883",
   annotation: "rgba(43,43,43,0.62)",
 };
 
@@ -335,7 +335,7 @@ function drawTraceItems() {
 
     const active = !frozen && now - item.createdAt < ACTIVE_MS;
     const fill = item.deleted ? COLORS.deleted : item.repeated ? COLORS.repeated : active ? COLORS.active : COLORS.settled;
-    const opacity = item.deleted ? 0.38 : item.repeated ? 0.98 : active ? 1 : 0.76;
+    const opacity = item.deleted ? 0.64 : item.repeated ? 0.98 : active ? 1 : 0.76;
     const fontSize = item.repeated ? 39 : 36;
     const itemY = item.deleted ? y + 12 : y;
     const itemX = item.repeated ? x - 4 : x;
