@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Aftertyping</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="site-shell" aria-live="polite">
+      <section id="home-stage" class="stage home-stage is-active" aria-labelledby="input-title">
+        <div class="home-composition">
+          <header class="home-intro">
+            <p class="kicker">SHARED SURFACE / RESIDUAL ACTION</p>
+            <h1 id="input-title">Aftertyping</h1>
+            <p class="statement">Your words will disappear. Only the action will remain.</p>
+            <p class="description">Aftertyping translates pauses, deletions, repetitions, key frequency, and keyboard sound into visual traces of a past typing action.</p>
+          </header>
+
+          <section class="input-system" aria-label="Typing input controls">
+            <label class="sr-only" for="typing-surface">Type a short sentence</label>
+            <textarea
+              id="typing-surface"
+              maxlength="180"
+              rows="3"
+              placeholder="Type a short sentence here."
+              autocomplete="off"
+              spellcheck="false"
+            ></textarea>
+
+            <div class="control-strip">
+              <div class="sound-control">
+                <button id="enable-mic" class="secondary small" type="button">Enable microphone for keyboard sound</button>
+                <p id="sound-status">SOUND TRACE INACTIVE</p>
+              </div>
+              <p class="count-line"><span id="character-count">0</span>/180 ACTIONS RECORDED</p>
+              <button id="leave-trace" type="button" disabled>LEAVE TRACE</button>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section id="result-stage" class="stage result-stage" aria-labelledby="result-title" hidden>
+        <aside class="side-note side-note-left" aria-label="Trace note">
+          <p class="note-number">00 / AFTER</p>
+          <p>The sentence is no longer the main object. What remains is the pressure, correction, and rhythm of the action.</p>
+        </aside>
+
+        <div class="result-composition">
+          <header class="result-intro">
+            <div>
+              <p class="kicker">TRACE LEFT / RESIDUAL SURFACE</p>
+              <h1 id="result-title">Aftertyping</h1>
+            </div>
+          </header>
+
+          <section class="trace-system" aria-labelledby="trace-title">
+            <div class="trace-header">
+              <div>
+                <p class="panel-index">01 / LIVE TYPING TRACE</p>
+                <h2 id="trace-title">pauses become spaces / deletions remain / repetitions form clumps</h2>
+              </div>
+              <p class="trace-status"><span id="result-character-count">0</span>/180 actions recorded</p>
+            </div>
+
+            <div class="trace-grid">
+              <div class="annotation annotation-left">
+                <span></span>
+                <p>pause gap</p>
+              </div>
+              <div class="live-trace-wrap">
+                <svg id="live-trace" viewBox="0 0 1120 430" role="img" aria-label="Live typographic trace generated while typing"></svg>
+              </div>
+              <div class="annotation annotation-right">
+                <span></span>
+                <p>deleted trace</p>
+              </div>
+            </div>
+
+            <div class="legend" aria-label="Trace colour key">
+              <span><i class="key-active"></i>active</span>
+              <span><i class="key-deleted"></i>deleted</span>
+              <span><i class="key-repeated"></i>repeated</span>
+              <span><i class="key-pause"></i>pause gap</span>
+            </div>
+          </section>
+
+          <section class="source-panel" aria-label="Source sentence and trace status">
+            <p class="panel-index">02 / SOURCE SENTENCE</p>
+            <p id="source-text" class="source-text"></p>
+            <div class="result-meta">
+              <p id="result-sound-status">SOUND TRACE INACTIVE</p>
+              <button id="type-again" class="secondary" type="button">TYPE AGAIN</button>
+            </div>
+          </section>
+        </div>
+
+        <aside class="side-note side-note-right" aria-label="Trace rule note">
+          <p class="note-number">03 / RULES</p>
+          <p>Deleted letters remain as faint interruptions. Repetition thickens. Pauses open measured distances in the line.</p>
+        </aside>
+      </section>
+    </main>
+    <script src="script.js" defer></script>
+  </body>
+</html>
