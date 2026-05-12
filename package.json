@@ -1,0 +1,10 @@
+{
+  "name": "aftertyping",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A browser-based design research experiment that translates typing into residual visual traces.",
+  "scripts": {
+    "start": "python3 -m http.server 4173",
+    "check": "node --check script.js"
+  }
+}

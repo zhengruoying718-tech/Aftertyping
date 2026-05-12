@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Aftertyping</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="homepage" aria-live="polite">
+      <section class="hero" aria-labelledby="input-title">
+        <aside class="side-note side-note-left" aria-label="Project note">
+          <p class="note-number">00 / SURFACE</p>
+          <p>Typing is treated as contact with a shared interface: a temporary action that leaves a visible remainder.</p>
+        </aside>
+
+        <div class="center-stage">
+          <header class="intro">
+            <p class="kicker">SHARED SURFACE / RESIDUAL ACTION</p>
+            <h1 id="input-title">Aftertyping</h1>
+            <p class="statement">Your words will disappear. Only the action will remain.</p>
+            <p class="description">Aftertyping translates pauses, deletions, repetitions, key frequency, and keyboard sound into visual traces of a past typing action.</p>
+          </header>
+
+          <section class="trace-system" aria-labelledby="trace-title">
+            <div class="trace-header">
+              <div>
+                <p class="panel-index">01 / LIVE TYPING TRACE</p>
+                <h2 id="trace-title">pauses become spaces / deletions remain / repetitions form clumps</h2>
+              </div>
+              <p id="hold-status" class="hold-status" role="status">Live surface awaiting action.</p>
+            </div>
+
+            <div class="trace-grid">
+              <div class="annotation annotation-left">
+                <span></span>
+                <p>pause gap</p>
+              </div>
+              <div class="live-trace-wrap">
+                <svg id="live-trace" viewBox="0 0 1120 430" role="img" aria-label="Live typographic trace generated while typing"></svg>
+              </div>
+              <div class="annotation annotation-right">
+                <span></span>
+                <p>deleted trace</p>
+              </div>
+            </div>
+
+            <div class="legend" aria-label="Trace colour key">
+              <span><i class="key-active"></i>active</span>
+              <span><i class="key-deleted"></i>deleted</span>
+              <span><i class="key-repeated"></i>repeated</span>
+              <span><i class="key-pause"></i>pause gap</span>
+            </div>
+          </section>
+
+          <section class="input-system" aria-label="Typing input controls">
+            <label class="sr-only" for="typing-surface">Type a short sentence</label>
+            <textarea
+              id="typing-surface"
+              maxlength="180"
+              rows="3"
+              placeholder="Type a short sentence here."
+              autocomplete="off"
+              spellcheck="false"
+            ></textarea>
+
+            <div class="control-strip">
+              <div class="sound-control">
+                <button id="enable-mic" class="secondary small" type="button">Enable microphone for keyboard sound</button>
+                <p id="sound-status">Sound trace inactive. Typing rhythm only.</p>
+              </div>
+              <p class="count-line"><span id="character-count">0</span>/180 characters recorded as action, not content.</p>
+            </div>
+
+            <div class="action-row">
+              <button id="leave-trace" type="button" disabled>LEAVE TRACE</button>
+              <button id="type-again" class="secondary" type="button" hidden>TYPE AGAIN</button>
+            </div>
+          </section>
+        </div>
+
+        <aside class="side-note side-note-right" aria-label="Trace note">
+          <p class="note-number">02 / RULES</p>
+          <p>Deleted letters are not erased from the record. Repeated letters thicken. Pauses open visible distances in the line.</p>
+        </aside>
+      </section>
+    </main>
+    <script src="script.js" defer></script>
+  </body>
+</html>
