@@ -2,24 +2,44 @@ const textarea = document.querySelector("#typing-surface");
 const leaveButton = document.querySelector("#leave-trace");
 const typeAgainButton = document.querySelector("#type-again");
 const exportButton = document.querySelector("#export-png");
+const micButton = document.querySelector("#enable-mic");
+const soundStatus = document.querySelector("#sound-status");
 const characterCount = document.querySelector("#character-count");
 const inputStage = document.querySelector("#input-stage");
 const outputStage = document.querySelector("#output-stage");
 const sheet = document.querySelector("#trace-sheet");
+const liveClump = document.querySelector("#live-clump");
 
 const SVG_NS = "http://www.w3.org/2000/svg";
-const WIDTH = 1190;
-const HEIGHT = 1684;
-const CHARCOAL = "#171615";
-const MUTED = "#6e6a62";
-const LINE = "#d9d4ca";
-const PAPER = "#fbfaf6";
-const MINT = "#eaf5ee";
-const VIOLET = "#b5a1cf";
-const ORANGE = "#ef6b3f";
-const RED = "#d72424";
+const WIDTH = 1400;
+const HEIGHT = 1800;
+const PAPER = "#F5F1EA";
+const PINK_FIELD = "#F1C9DC";
+const GREY_FIELD = "#BFC1C6";
+const HOT = "#F45A3C";
+const HALO = "#F39AB1";
+const PINK_LINE = "#E6AFC4";
+const CHARCOAL = "#2B2B2B";
+const MUTED = "#716C68";
+const RULE = "rgba(43,43,43,0.24)";
+
+const KEY_LAYOUT = [
+  ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"],
+  ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"],
+  ["a", "s", "d", "f", "g", "h", "j", "k", "l"],
+  ["z", "x", "c", "v", "b", "n", "m"],
+  ["space", "⌫", ".", ",", "?", "!"],
+];
 
 const state = createEmptyState();
+let audioContext;
+let analyser;
+let microphoneSource;
+let soundData;
+let soundFrame = 0;
+let microphoneStream;
+let currentAmplitude = 0;
+let microphoneState = "inactive";
 
 function createEmptyState() {
   return {
@@ -31,16 +51,25 @@ function createEmptyState() {
     pauses: [],
     repeated: new Map(),
     lastPrintable: "",
+    soundPeaks: [],
   };
 }
 
 function resetState() {
   const fresh = createEmptyState();
   Object.assign(state, fresh);
+  currentAmplitude = 0;
+  renderLiveClump();
 }
 
 function isPrintableKey(event) {
   return event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey;
+}
+
+function normaliseKey(key) {
+  if (key === " ") return "space";
+  if (key === "Backspace" || key === "Delete") return "⌫";
+  return key.toLowerCase();
 }
 
 function recordKey(event) {
@@ -56,9 +85,10 @@ function recordKey(event) {
   const isDeletion = event.key === "Backspace" || event.key === "Delete";
   const key = printable ? event.key : isDeletion ? "⌫" : event.key;
   const action = isDeletion ? "delete" : printable ? "type" : "control";
+  const normalized = normaliseKey(key);
+  const amplitude = currentAmplitude;
 
   if (printable) {
-    const normalized = event.key.toLowerCase();
     state.keyFrequency.set(normalized, (state.keyFrequency.get(normalized) || 0) + 1);
     if (normalized === state.lastPrintable) {
       state.repeated.set(normalized, (state.repeated.get(normalized) || 0) + 1);
@@ -68,17 +98,21 @@ function recordKey(event) {
 
   if (isDeletion) {
     state.deletions += 1;
+    state.keyFrequency.set("⌫", (state.keyFrequency.get("⌫") || 0) + 1);
     state.lastPrintable = "";
   }
 
   state.events.push({
     key,
+    normalized,
     action,
     at: now - state.startedAt,
     delta,
+    amplitude,
     valueLength: textarea.value.length,
   });
   state.lastAt = now;
+  renderLiveClump();
 }
 
 textarea.addEventListener("keydown", recordKey);
@@ -86,6 +120,7 @@ textarea.addEventListener("input", () => {
   const length = textarea.value.trim().length;
   characterCount.textContent = textarea.value.length.toString();
   leaveButton.disabled = length === 0 || state.events.length === 0;
+  renderLiveClump();
 });
 
 leaveButton.addEventListener("click", () => {
@@ -116,6 +151,55 @@ typeAgainButton.addEventListener("click", () => {
 });
 
 exportButton.addEventListener("click", exportPng);
+micButton.addEventListener("click", enableMicrophone);
+renderLiveClump();
+
+async function enableMicrophone() {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    microphoneState = "unavailable";
+    soundStatus.textContent = "Sound trace unavailable. Typing rhythm only.";
+    return;
+  }
+
+  try {
+    microphoneStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    audioContext = new AudioContext();
+    analyser = audioContext.createAnalyser();
+    analyser.fftSize = 512;
+    microphoneSource = audioContext.createMediaStreamSource(microphoneStream);
+    microphoneSource.connect(analyser);
+    soundData = new Uint8Array(analyser.fftSize);
+    microphoneState = "enabled";
+    micButton.disabled = true;
+    soundStatus.textContent = "Microphone enabled. Live amplitude only; no audio is recorded.";
+    monitorAmplitude();
+  } catch (error) {
+    microphoneState = "unavailable";
+    soundStatus.textContent = "Sound trace unavailable. Typing rhythm only.";
+  }
+}
+
+function monitorAmplitude() {
+  if (!analyser) return;
+  analyser.getByteTimeDomainData(soundData);
+  let sum = 0;
+  for (let index = 0; index < soundData.length; index += 1) {
+    const centered = (soundData[index] - 128) / 128;
+    sum += centered * centered;
+  }
+  currentAmplitude = Math.sqrt(sum / soundData.length);
+
+  if (state.startedAt && currentAmplitude > 0.045) {
+    const at = performance.now() - state.startedAt;
+    const previous = state.soundPeaks[state.soundPeaks.length - 1];
+    if (!previous || at - previous.at > 80) {
+      state.soundPeaks.push({ at, amplitude: currentAmplitude });
+      if (state.soundPeaks.length > 220) state.soundPeaks.shift();
+    }
+  }
+
+  soundFrame = requestAnimationFrame(monitorAmplitude);
+}
 
 function buildTrace(text, typingState) {
   const events = typingState.events.filter((event) => event.action !== "control");
@@ -140,6 +224,8 @@ function buildTrace(text, typingState) {
     keystrokes,
     repeatedCharacters,
     printableEvents,
+    soundPeaks: typingState.soundPeaks,
+    microphoneState,
   };
 }
 
@@ -153,238 +239,254 @@ function createTraceId(text, duration, keystrokes) {
   return `AT-${Math.abs(hash).toString(36).slice(0, 6).toUpperCase()}`;
 }
 
-function renderTraceSheet(trace) {
-  sheet.replaceChildren();
-  addDefs();
-  rect(0, 0, WIDTH, HEIGHT, PAPER, "none");
-  drawHeader(trace);
-  drawFrequency(trace, 78, 315, 492, 420);
-  drawRhythm(trace, 620, 315, 492, 420);
-  drawKerning(trace, 78, 820, 492, 515);
-  drawGhost(trace, 620, 820, 492, 515);
-  drawMetadata(trace, 78, 1452, 1034, 112);
+function renderLiveClump() {
+  const trace = buildTrace(textarea.value || "", state);
+  liveClump.replaceChildren();
+  svgRect(liveClump, 0, 0, 980, 260, "transparent", "none");
+  drawRulings(liveClump, 18, 54, 944, 160, 16, "rgba(43,43,43,0.16)");
+  drawClumpInto(liveClump, trace, 26, 72, 925, 145, { live: true });
+  if (!textarea.value) {
+    svgText(liveClump, "typing pulses will disturb this field", 28, 142, { size: 18, fill: "rgba(43,43,43,0.42)", family: "Georgia, Times New Roman, serif" });
+  }
 }
 
-function addDefs() {
-  const defs = el("defs");
-  const blur = el("filter", { id: "soft-blur", x: "-30%", y: "-30%", width: "160%", height: "160%" });
-  blur.appendChild(el("feGaussianBlur", { stdDeviation: "18" }));
+function renderTraceSheet(trace) {
+  sheet.replaceChildren();
+  addDefs(sheet);
+  svgRect(sheet, 0, 0, WIDTH, HEIGHT, PAPER, "none");
+  drawHeader(trace);
+  drawClumpPanel(trace, 92, 262, 1216, 315);
+  drawKeyboardPanel(trace, 92, 658, 1216, 365);
+  drawRhythmPanel(trace, 92, 1100, 1216, 360);
+  drawMetadataPanel(trace, 92, 1542, 1216, 150);
+}
+
+function addDefs(target) {
+  const defs = svgEl("defs");
+  const blur = svgEl("filter", { id: "soft-blur", x: "-35%", y: "-35%", width: "170%", height: "170%" });
+  blur.appendChild(svgEl("feGaussianBlur", { stdDeviation: "15" }));
   defs.appendChild(blur);
 
-  const ghostBlur = el("filter", { id: "ghost-blur", x: "-20%", y: "-20%", width: "140%", height: "140%" });
-  ghostBlur.appendChild(el("feGaussianBlur", { stdDeviation: "2.6" }));
-  defs.appendChild(ghostBlur);
-
-  const grain = el("filter", { id: "paper-grain", x: "0", y: "0", width: "100%", height: "100%" });
-  grain.appendChild(el("feTurbulence", { type: "fractalNoise", baseFrequency: "0.85", numOctaves: "2", stitchTiles: "stitch", result: "noise" }));
-  grain.appendChild(el("feColorMatrix", { type: "saturate", values: "0" }));
-  grain.appendChild(el("feComponentTransfer", { result: "grain" }));
-  defs.appendChild(grain);
-  sheet.appendChild(defs);
+  const tinyBlur = svgEl("filter", { id: "tiny-blur", x: "-25%", y: "-25%", width: "150%", height: "150%" });
+  tinyBlur.appendChild(svgEl("feGaussianBlur", { stdDeviation: "3" }));
+  defs.appendChild(tinyBlur);
+  target.appendChild(defs);
 }
 
 function drawHeader(trace) {
-  text("Aftertyping", 78, 116, {
+  svgText(sheet, "Aftertyping", 92, 112, {
     family: "Georgia, Times New Roman, serif",
-    size: 74,
-    weight: 400,
+    size: 76,
     spacing: -4,
   });
-  text("A residual notation of a typing action. The sentence is withheld; the shared surface keeps only pressure, rhythm, correction, and afterimage.", 80, 172, {
-    size: 18,
+  svgText(sheet, "A residual notation of a typing action. The sentence is withheld; only rhythm, pressure, correction, and keyboard sound remain.", 94, 166, {
+    size: 17,
     fill: MUTED,
   });
-  text(trace.id, 1014, 110, { size: 14, spacing: 2.4, fill: MUTED });
-  line(78, 228, 1112, 228, LINE);
+  svgText(sheet, trace.id, 1190, 107, { size: 13, spacing: 2.2, fill: MUTED });
+  svgLine(sheet, 92, 208, 1308, 208, "rgba(43,43,43,0.32)");
 }
 
-function drawModuleFrame(title, subtitle, x, y, w, h, number) {
-  text(number.padStart(2, "0"), x, y - 28, { size: 12, fill: MUTED, spacing: 2.2 });
-  text(title, x + 44, y - 30, { size: 20, family: "Georgia, Times New Roman, serif" });
-  text(subtitle, x + 44, y - 8, { size: 11, fill: MUTED, spacing: 1.4 });
-  rect(x, y, w, h, "transparent", LINE);
+function panelLabel(number, title, subtitle, x, y) {
+  svgText(sheet, number.padStart(2, "0"), x, y - 22, { size: 11, fill: MUTED, spacing: 2.1 });
+  svgText(sheet, title, x + 46, y - 24, { size: 21, family: "Georgia, Times New Roman, serif" });
+  svgText(sheet, subtitle, x + 46, y - 4, { size: 10.5, fill: MUTED, spacing: 1.2 });
 }
 
-function drawFrequency(trace, x, y, w, h) {
-  drawModuleFrame("Frequency Residue", "density field from repeated keys", x, y, w, h, "1");
-  const field = el("g");
-  field.setAttribute("filter", "url(#soft-blur)");
-  sheet.appendChild(field);
-  rect(x + 22, y + 24, w - 44, h - 74, MINT, "none", { opacity: 0.45, parent: field });
+function drawPanelGround(x, y, w, h, fill, options = {}) {
+  svgRect(sheet, x, y, w, h, fill, "none", { opacity: options.opacity || 1 });
+  svgLine(sheet, x, y, x + w, y, options.stroke || PINK_LINE, { opacity: 0.75 });
+  svgLine(sheet, x, y + h, x + w, y + h, options.stroke || PINK_LINE, { opacity: 0.75 });
+}
 
-  const max = Math.max(1, ...trace.frequency.map(([, count]) => count));
-  const centerX = x + w / 2;
-  const centerY = y + h / 2 - 18;
-  trace.frequency.slice(0, 22).forEach(([character, count], index) => {
-    const angle = index * 2.399 + count * 0.21;
-    const radius = 18 + index * 10.5;
-    const intensity = count / max;
-    const cx = clamp(centerX + Math.cos(angle) * radius + pseudo(character, 42), x + 58, x + w - 58);
-    const cy = clamp(centerY + Math.sin(angle) * radius + pseudo(character, 31), y + 58, y + h - 104);
-    const color = intensity > 0.72 ? RED : intensity > 0.38 ? ORANGE : VIOLET;
-    circle(cx, cy, 28 + intensity * 64, color, { opacity: 0.16 + intensity * 0.28, parent: field });
-  });
-
-  trace.frequency.slice(0, 14).forEach(([character, count], index) => {
-    const col = index % 7;
-    const row = Math.floor(index / 7);
-    const labelX = x + 34 + col * 62;
-    const labelY = y + h - 44 + row * 19;
-    text(character === " " ? "space" : character, labelX, labelY, { size: 12, fill: MUTED, opacity: 0.74 });
-    text(String(count), labelX + 34, labelY, { size: 12, fill: CHARCOAL, opacity: 0.58 });
+function drawClumpPanel(trace, x, y, w, h) {
+  panelLabel("1", "Input / Live Kerning Clump Field", "keypresses compress, pause, double, interrupt, and drift letter spacing", x, y);
+  drawPanelGround(x, y, w, h, PINK_FIELD, { stroke: PINK_LINE });
+  drawRulings(sheet, x + 24, y + 44, w - 48, h - 88, 17, "rgba(43,43,43,0.17)");
+  drawClumpInto(sheet, trace, x + 36, y + 78, w - 72, h - 130, { live: false });
+  trace.events.filter((event) => event.action === "delete").slice(0, 18).forEach((event, index) => {
+    const dx = x + 44 + (index * 54) % (w - 120);
+    const dy = y + h - 56 + Math.floor((index * 54) / (w - 120)) * 15;
+    svgLine(sheet, dx, dy, dx + 34, dy - 9, CHARCOAL, { width: 1.2, opacity: 0.42 });
   });
 }
 
-function drawRhythm(trace, x, y, w, h) {
-  drawModuleFrame("Rhythm Trace", "bursts, pauses, and corrections across time", x, y, w, h, "2");
-  const left = x + 42;
-  const right = x + w - 42;
-  const baseline = y + h / 2;
-  const usable = right - left;
-
-  for (let i = 0; i <= 6; i += 1) {
-    const gx = left + (usable / 6) * i;
-    line(gx, y + 54, gx, y + h - 60, LINE, { opacity: i === 0 || i === 6 ? 0.75 : 0.34 });
-    text(`${i}`, gx - 3, y + h - 32, { size: 10, fill: MUTED, opacity: 0.62 });
-  }
-  line(left, baseline, right, baseline, CHARCOAL, { opacity: 0.34 });
-
-  const duration = Math.max(1, trace.duration);
-  trace.events.forEach((event, index) => {
-    const eventX = left + (event.at / duration) * usable;
-    const fast = event.delta && event.delta < 150;
-    const height = event.action === "delete" ? 54 : fast ? 74 : 38;
-    const color = event.action === "delete" ? CHARCOAL : fast ? RED : event.delta > 650 ? VIOLET : ORANGE;
-    if (event.action === "delete") {
-      line(eventX - 8, baseline - height / 2, eventX + 8, baseline + height / 2, color, { width: 1.2, opacity: 0.72 });
-      line(eventX + 8, baseline - height / 2, eventX - 8, baseline + height / 2, color, { width: 1.2, opacity: 0.72 });
-    } else {
-      line(eventX, baseline - height / 2, eventX, baseline + height / 2, color, { width: fast ? 1.7 : 1, opacity: 0.35 + Math.min(0.4, index / Math.max(1, trace.events.length)) });
-      circle(eventX, baseline + Math.sin(index) * 38, fast ? 3.2 : 2.1, color, { opacity: 0.42 });
-    }
-  });
-
-  trace.pauses.forEach((pause) => {
-    const px = left + (pause.at / duration) * usable;
-    const gap = clamp(pause.duration / duration * usable, 10, 76);
-    rect(px - gap, y + 72, gap, h - 158, PAPER, "none", { opacity: 0.86 });
-    line(px, y + 72, px, y + h - 86, VIOLET, { width: 1, opacity: 0.58, dasharray: "4 8" });
-  });
-
-  text("compressed marks indicate fast bursts; open intervals indicate silence", left, y + h - 72, { size: 12, fill: MUTED });
-}
-
-function drawKerning(trace, x, y, w, h) {
-  drawModuleFrame("Kerning Clump", "spacing altered by speed, repetition, pause, and erasure", x, y, w, h, "3");
-  const group = el("g");
-  sheet.appendChild(group);
-  const chars = trace.text.replace(/\s+/g, " ").slice(0, 95).split("");
-  let cursorX = x + 45;
-  let cursorY = y + 105;
+function drawClumpInto(target, trace, x, y, w, h, options = {}) {
+  const textValue = trace.text.replace(/\s+/g, " ").slice(0, 150);
+  const characters = textValue.split("");
+  let cursorX = x;
+  let cursorY = y + 42;
   let eventIndex = 0;
-  chars.forEach((character, index) => {
-    const event = trace.printableEvents[eventIndex] || { delta: 220 };
-    eventIndex += character === " " ? 0 : 1;
-    const repeated = character.toLowerCase() === chars[index - 1]?.toLowerCase();
-    const pauseGap = event.delta > 1000 ? 36 : 0;
-    const fastCompression = event.delta && event.delta < 145 ? -8 : 0;
-    const drift = Math.sin(index * 1.7) * (event.delta > 600 ? 14 : 5);
-    const opacity = character === " " ? 0 : repeated ? 0.7 : 0.46;
-    const fill = repeated ? RED : event.delta > 700 ? VIOLET : CHARCOAL;
-    const fontSize = repeated ? 35 : 31;
 
-    if (cursorX > x + w - 76 || event.delta > 1400) {
-      cursorX = x + 45 + Math.sin(index) * 20;
-      cursorY += 74 + (event.delta > 1400 ? 28 : 0);
+  characters.forEach((character, index) => {
+    const event = trace.printableEvents[eventIndex] || { delta: 260, amplitude: 0 };
+    if (character !== " ") eventIndex += 1;
+    const previous = characters[index - 1]?.toLowerCase();
+    const repeated = character.toLowerCase() === previous && character !== " ";
+    const pauseGap = event.delta > 1000 ? Math.min(72, event.delta / 32) : 0;
+    const fastCompression = event.delta && event.delta < 145 ? -9 : 0;
+    const soundLift = Math.min(28, (event.amplitude || 0) * 280);
+    const drift = Math.sin(index * 1.46) * (event.delta > 650 ? 15 : 5) + soundLift;
+    const fontSize = options.live ? 30 : 35;
+
+    if (cursorX > x + w - 58 || event.delta > 1500) {
+      cursorX = x + Math.sin(index) * 18;
+      cursorY += options.live ? 48 : 60;
     }
-    if (cursorY > y + h - 65) return;
+    if (cursorY > y + h) return;
 
     if (character !== " ") {
-      text(character, cursorX + drift, cursorY + Math.cos(index) * 9, {
+      const fill = repeated ? HOT : event.delta > 700 ? HALO : CHARCOAL;
+      svgText(target, character, cursorX + drift, cursorY + Math.cos(index) * 8, {
         family: "Georgia, Times New Roman, serif",
-        size: fontSize,
+        size: repeated ? fontSize + 7 : fontSize,
         fill,
-        opacity,
-        rotate: repeated ? -6 : event.delta > 700 ? 4 : 0,
-        parent: group,
+        opacity: repeated ? 0.78 : 0.48,
+        rotate: repeated ? -5 : event.delta > 700 ? 4 : 0,
       });
-      if (repeated) {
-        text(character, cursorX + drift + 4, cursorY + Math.cos(index) * 9 + 3, {
+      if (repeated || event.delta < 130) {
+        svgText(target, character, cursorX + drift + 4, cursorY + Math.cos(index) * 8 + 3, {
           family: "Georgia, Times New Roman, serif",
-          size: fontSize,
-          fill: ORANGE,
-          opacity: 0.28,
-          parent: group,
+          size: fontSize + 4,
+          fill: HOT,
+          opacity: 0.24,
         });
       }
     }
-    cursorX += (character === " " ? 24 : 24) + fastCompression + pauseGap;
-  });
 
-  trace.events.filter((event) => event.action === "delete").slice(0, 16).forEach((event, index) => {
-    const dx = x + 58 + (index % 8) * 51;
-    const dy = y + h - 92 + Math.floor(index / 8) * 22;
-    line(dx, dy, dx + 32, dy - 8, CHARCOAL, { opacity: 0.38, width: 1.2 });
+    cursorX += 24 + fastCompression + pauseGap + (character === " " ? 18 : 0);
   });
 }
 
-function drawGhost(trace, x, y, w, h) {
-  drawModuleFrame("Ghost Text Residue", "partial afterimage of a sentence that is no longer held", x, y, w, h, "4");
-  rect(x + 32, y + 52, w - 64, h - 104, MINT, "none", { opacity: 0.28 });
-  const words = trace.text.trim().split(/\s+/).filter(Boolean).slice(0, 24);
-  let gx = x + 54;
-  let gy = y + 114;
-  words.forEach((word, wordIndex) => {
-    const seed = pseudo(word, 100);
-    const visible = word.split("").filter((_, charIndex) => (charIndex + wordIndex + Math.round(seed)) % 3 !== 0).join("");
-    const fragment = visible.length > 2 ? visible.slice(0, Math.ceil(visible.length * 0.62)) : visible;
-    const opacity = 0.12 + ((wordIndex % 5) * 0.045);
-    if (gx > x + w - 130) {
-      gx = x + 54 + Math.abs(seed);
-      gy += 66;
+function drawKeyboardPanel(trace, x, y, w, h) {
+  panelLabel("2", "Keyboard Heat Residue", "a shared key surface after use; frequent keys retain warmer pressure", x, y);
+  drawPanelGround(x, y, w, h, GREY_FIELD, { stroke: "rgba(43,43,43,0.24)" });
+  drawRulings(sheet, x + 22, y + 38, w - 44, h - 72, 22, "rgba(245,241,234,0.28)");
+
+  const heatLayer = svgEl("g", { filter: "url(#soft-blur)" });
+  sheet.appendChild(heatLayer);
+  const max = Math.max(1, ...trace.frequency.map(([, count]) => count));
+  const keyMap = createKeyboardCoordinates(x, y, w, h);
+
+  trace.frequency.forEach(([key, count]) => {
+    const coordinate = keyMap.get(key);
+    if (!coordinate) return;
+    const intensity = count / max;
+    svgCircle(heatLayer, coordinate.cx, coordinate.cy, 26 + intensity * 38, HALO, { opacity: 0.17 + intensity * 0.18 });
+    svgCircle(heatLayer, coordinate.cx, coordinate.cy, 10 + intensity * 22, HOT, { opacity: 0.2 + intensity * 0.34 });
+  });
+
+  keyMap.forEach((coordinate, key) => {
+    const count = trace.frequency.find(([frequencyKey]) => frequencyKey === key)?.[1] || 0;
+    const intensity = count / max;
+    svgRect(sheet, coordinate.x, coordinate.y, coordinate.w, coordinate.h, "transparent", count ? PINK_LINE : "rgba(245,241,234,0.42)", { opacity: count ? 0.92 : 0.48, rx: 2 });
+    svgText(sheet, key, coordinate.cx - (key.length > 1 ? 14 : 4), coordinate.cy + 4, { size: 12, fill: CHARCOAL, opacity: count ? 0.78 : 0.36, spacing: 1.2 });
+    if (count) {
+      svgText(sheet, String(count).padStart(2, "0"), coordinate.x + 5, coordinate.y + 13, { size: 8, fill: CHARCOAL, opacity: 0.52 });
+      svgCircle(sheet, coordinate.cx, coordinate.cy, 2.2 + intensity * 3.4, HOT, { opacity: 0.7 });
     }
-    text(fragment, gx, gy + Math.sin(wordIndex) * 12, {
-      family: "Georgia, Times New Roman, serif",
-      size: 34 + (wordIndex % 3) * 7,
-      fill: wordIndex % 4 === 0 ? ORANGE : wordIndex % 3 === 0 ? VIOLET : CHARCOAL,
-      opacity,
-      filter: wordIndex % 2 === 0 ? "url(#ghost-blur)" : "none",
+  });
+}
+
+function createKeyboardCoordinates(x, y, w, h) {
+  const map = new Map();
+  const keyW = 76;
+  const keyH = 40;
+  const gap = 11;
+  const startY = y + 66;
+  KEY_LAYOUT.forEach((row, rowIndex) => {
+    const rowWidth = row.reduce((total, key) => total + (key === "space" ? keyW * 3.4 : keyW), 0) + gap * (row.length - 1);
+    let cursorX = x + (w - rowWidth) / 2 + rowIndex * 14;
+    row.forEach((key) => {
+      const currentW = key === "space" ? keyW * 3.4 : keyW;
+      const currentY = startY + rowIndex * 54;
+      map.set(key, { x: cursorX, y: currentY, w: currentW, h: keyH, cx: cursorX + currentW / 2, cy: currentY + keyH / 2 });
+      cursorX += currentW + gap;
     });
-    if (wordIndex % 4 === 1) {
-      line(gx - 8, gy + 10, gx + word.length * 17, gy + 4, PAPER, { width: 14, opacity: 0.72 });
-    }
-    gx += word.length * 21 + 42;
   });
-
-  for (let i = 0; i < 26; i += 1) {
-    const rx = x + 38 + ((i * 73) % (w - 76));
-    const ry = y + 78 + ((i * 47) % (h - 150));
-    line(rx, ry, rx + 36 + (i % 5) * 12, ry, VIOLET, { width: 0.8, opacity: 0.13 + (i % 4) * 0.03 });
-  }
+  return map;
 }
 
-function drawMetadata(trace, x, y, w, h) {
-  line(x, y - 40, x + w, y - 40, LINE);
-  text("Trace Metadata", x, y, { size: 18, family: "Georgia, Times New Roman, serif" });
+function drawRhythmPanel(trace, x, y, w, h) {
+  panelLabel("3", "Rhythm + Sound Timeline", "typing events move left to right; pauses open the score, deletions cut it", x, y);
+  drawPanelGround(x, y, w, h, PINK_FIELD, { stroke: PINK_LINE });
+  drawRulings(sheet, x + 24, y + 40, w - 48, h - 78, 13, "rgba(43,43,43,0.18)");
+
+  const left = x + 42;
+  const right = x + w - 42;
+  const usable = right - left;
+  const duration = Math.max(1, trace.duration);
+  const lanes = [y + 84, y + 132, y + 180, y + 228, y + 276];
+
+  for (let tick = 0; tick <= 12; tick += 1) {
+    const tx = left + (usable / 12) * tick;
+    svgLine(sheet, tx, y + 52, tx, y + h - 44, CHARCOAL, { opacity: tick % 3 === 0 ? 0.22 : 0.1 });
+    svgText(sheet, String(tick).padStart(2, "0"), tx - 6, y + h - 22, { size: 8, fill: MUTED, opacity: 0.72 });
+  }
+
+  trace.pauses.forEach((pause) => {
+    const px = left + (pause.at / duration) * usable;
+    const gap = clamp((pause.duration / duration) * usable, 22, 120);
+    svgRect(sheet, px - gap, y + 54, gap, h - 102, PAPER, "none", { opacity: 0.7 });
+    svgLine(sheet, px, y + 54, px, y + h - 48, CHARCOAL, { width: 1, opacity: 0.35, dasharray: "3 8" });
+  });
+
+  trace.events.forEach((event, index) => {
+    const eventX = left + (event.at / duration) * usable;
+    const lane = lanes[index % lanes.length];
+    const fast = event.delta && event.delta < 150;
+    const repeated = event.normalized && trace.events[index - 1]?.normalized === event.normalized;
+    const height = event.action === "delete" ? 54 : 14 + Math.min(44, (fast ? 36 : 14) + (event.amplitude || 0) * 180);
+    const color = event.action === "delete" ? CHARCOAL : fast || event.amplitude > 0.055 ? HOT : HALO;
+
+    if (event.action === "delete") {
+      svgRect(sheet, eventX - 6, lane - 24, 12, height, CHARCOAL, "none", { opacity: 0.66 });
+      svgLine(sheet, eventX + 10, lane - 22, eventX - 16, lane + 22, PAPER, { width: 2, opacity: 0.88 });
+    } else {
+      svgRect(sheet, eventX - (fast ? 3 : 1.6), lane - height / 2, fast ? 6 : 3.2, height, color, "none", { opacity: fast ? 0.78 : 0.48 });
+      if (repeated) svgRect(sheet, eventX + 5, lane - height / 2, 2.5, height, HOT, "none", { opacity: 0.58 });
+    }
+  });
+
+  trace.soundPeaks.forEach((peak) => {
+    const peakX = left + (peak.at / duration) * usable;
+    const lane = lanes[4] + Math.sin(peak.at * 0.01) * 18;
+    const radius = clamp(peak.amplitude * 220, 3, 18);
+    svgCircle(sheet, peakX, lane, radius, peak.amplitude > 0.08 ? HOT : HALO, { opacity: 0.28, filter: "url(#tiny-blur)" });
+  });
+}
+
+function drawMetadataPanel(trace, x, y, w, h) {
+  panelLabel("4", "Metadata / Export Area", "quiet archive label for the residual action", x, y);
+  drawPanelGround(x, y, w, h, PAPER, { stroke: "rgba(43,43,43,0.28)" });
+  drawRulings(sheet, x + 24, y + 28, w - 48, h - 56, 20, "rgba(43,43,43,0.12)");
+
   const metadata = [
     ["trace id", trace.id],
     ["date / time", formatDate(trace.createdAt)],
     ["duration", `${(trace.duration / 1000).toFixed(2)} sec`],
     ["keystrokes", String(trace.keystrokes)],
     ["typing speed", `${trace.speed.toFixed(1)} keys/sec`],
-    ["pauses > 1 sec", String(trace.pauses.length)],
+    ["pauses", String(trace.pauses.length)],
     ["deletions", String(trace.deletions)],
     ["repeated characters", trace.repeatedCharacters.slice(0, 5).join("  ") || "none recorded"],
+    ["microphone", trace.microphoneState === "enabled" ? "enabled / live amplitude only" : "not enabled"],
   ];
 
   metadata.forEach(([label, value], index) => {
-    const col = index % 4;
-    const row = Math.floor(index / 4);
-    const mx = x + col * (w / 4);
-    const my = y + 34 + row * 42;
-    text(label, mx, my, { size: 10, fill: MUTED, spacing: 1.7 });
-    text(value, mx, my + 18, { size: 13, fill: CHARCOAL });
+    const col = index % 3;
+    const row = Math.floor(index / 3);
+    const mx = x + 36 + col * (w / 3);
+    const my = y + 46 + row * 34;
+    svgText(sheet, label, mx, my, { size: 9, fill: MUTED, spacing: 1.7 });
+    svgText(sheet, value, mx, my + 17, { size: 12.5, fill: CHARCOAL });
   });
+}
+
+function drawRulings(target, x, y, w, h, spacing, stroke) {
+  for (let lineY = y; lineY <= y + h; lineY += spacing) {
+    svgLine(target, x, lineY, x + w, lineY, stroke, { width: 0.8 });
+  }
 }
 
 function exportPng() {
@@ -420,17 +522,11 @@ function formatDate(date) {
   }).format(date);
 }
 
-function pseudo(value, scale) {
-  let total = 0;
-  for (let i = 0; i < value.length; i += 1) total += value.charCodeAt(i) * (i + 3);
-  return ((total % (scale * 2)) - scale) / 2;
-}
-
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
-function el(tag, attributes = {}) {
+function svgEl(tag, attributes = {}) {
   const node = document.createElementNS(SVG_NS, tag);
   Object.entries(attributes).forEach(([key, value]) => {
     if (value !== undefined && value !== null) node.setAttribute(key, String(value));
@@ -438,21 +534,20 @@ function el(tag, attributes = {}) {
   return node;
 }
 
-function rect(x, y, width, height, fill = "none", stroke = "none", options = {}) {
-  const node = el("rect", { x, y, width, height, fill, stroke, opacity: options.opacity });
-  if (options.rx) node.setAttribute("rx", options.rx);
-  (options.parent || sheet).appendChild(node);
+function svgRect(target, x, y, width, height, fill = "none", stroke = "none", options = {}) {
+  const node = svgEl("rect", { x, y, width, height, fill, stroke, opacity: options.opacity, rx: options.rx, filter: options.filter });
+  target.appendChild(node);
   return node;
 }
 
-function circle(cx, cy, r, fill, options = {}) {
-  const node = el("circle", { cx, cy, r, fill, opacity: options.opacity });
-  (options.parent || sheet).appendChild(node);
+function svgCircle(target, cx, cy, r, fill, options = {}) {
+  const node = svgEl("circle", { cx, cy, r, fill, opacity: options.opacity, filter: options.filter });
+  target.appendChild(node);
   return node;
 }
 
-function line(x1, y1, x2, y2, stroke, options = {}) {
-  const node = el("line", {
+function svgLine(target, x1, y1, x2, y2, stroke, options = {}) {
+  const node = svgEl("line", {
     x1,
     y1,
     x2,
@@ -463,12 +558,12 @@ function line(x1, y1, x2, y2, stroke, options = {}) {
     "stroke-dasharray": options.dasharray,
     "stroke-linecap": "round",
   });
-  (options.parent || sheet).appendChild(node);
+  target.appendChild(node);
   return node;
 }
 
-function text(content, x, y, options = {}) {
-  const node = el("text", {
+function svgText(target, content, x, y, options = {}) {
+  const node = svgEl("text", {
     x,
     y,
     fill: options.fill || CHARCOAL,
@@ -481,6 +576,6 @@ function text(content, x, y, options = {}) {
   });
   if (options.rotate) node.setAttribute("transform", `rotate(${options.rotate} ${x} ${y})`);
   node.textContent = content;
-  (options.parent || sheet).appendChild(node);
+  target.appendChild(node);
   return node;
 }
