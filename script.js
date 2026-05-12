@@ -4,7 +4,6 @@ const typeAgainButton = document.querySelector("#type-again");
 const micButton = document.querySelector("#enable-mic");
 const soundStatus = document.querySelector("#sound-status");
 const characterCount = document.querySelector("#character-count");
-const holdStatus = document.querySelector("#hold-status");
 const liveTrace = document.querySelector("#live-trace");
 const homeStage = document.querySelector("#home-stage");
 const resultStage = document.querySelector("#result-stage");
@@ -75,7 +74,6 @@ function resetState() {
   leaveButton.disabled = true;
   leaveButton.textContent = "LEAVE TRACE";
   sourceText.textContent = "";
-  holdStatus.textContent = "Trace held. Type again to begin another action.";
   showHomeStage();
   textarea.focus();
   renderLiveTrace();
@@ -194,7 +192,6 @@ function holdTrace() {
   sourceText.textContent = textarea.value.trim() || "[sentence withheld]";
   resultCharacterCount.textContent = textarea.value.length.toString();
   resultSoundStatus.textContent = soundStatus.textContent;
-  holdStatus.textContent = "Trace held. Type again to begin another action.";
   renderLiveTrace();
   showResultStage();
 }
@@ -228,7 +225,7 @@ function showResultStage() {
 async function enableMicrophone() {
   if (!navigator.mediaDevices?.getUserMedia) {
     microphoneState = "unavailable";
-    soundStatus.textContent = "Sound trace unavailable. Typing rhythm only.";
+    soundStatus.textContent = "SOUND TRACE UNAVAILABLE";
     resultSoundStatus.textContent = soundStatus.textContent;
     return;
   }
@@ -243,12 +240,12 @@ async function enableMicrophone() {
     soundData = new Uint8Array(analyser.fftSize);
     microphoneState = "enabled";
     micButton.disabled = true;
-    soundStatus.textContent = "Microphone enabled. Live amplitude only; no audio is recorded.";
+    soundStatus.textContent = "SOUND TRACE ENABLED";
     resultSoundStatus.textContent = soundStatus.textContent;
     monitorAmplitude();
   } catch (error) {
     microphoneState = "unavailable";
-    soundStatus.textContent = "Sound trace unavailable. Typing rhythm only.";
+    soundStatus.textContent = "SOUND TRACE UNAVAILABLE";
     resultSoundStatus.textContent = soundStatus.textContent;
   }
 }
