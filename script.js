@@ -6,6 +6,11 @@ const soundStatus = document.querySelector("#sound-status");
 const characterCount = document.querySelector("#character-count");
 const holdStatus = document.querySelector("#hold-status");
 const liveTrace = document.querySelector("#live-trace");
+const homeStage = document.querySelector("#home-stage");
+const resultStage = document.querySelector("#result-stage");
+const sourceText = document.querySelector("#source-text");
+const resultCharacterCount = document.querySelector("#result-character-count");
+const resultSoundStatus = document.querySelector("#result-sound-status");
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const TRACE_WIDTH = 1120;
@@ -66,10 +71,12 @@ function resetState() {
   textarea.value = "";
   textarea.disabled = false;
   characterCount.textContent = "0";
+  resultCharacterCount.textContent = "0";
   leaveButton.disabled = true;
   leaveButton.textContent = "LEAVE TRACE";
-  typeAgainButton.hidden = true;
-  holdStatus.textContent = "Live surface awaiting action.";
+  sourceText.textContent = "";
+  holdStatus.textContent = "Trace held. Type again to begin another action.";
+  showHomeStage();
   textarea.focus();
   renderLiveTrace();
 }
@@ -174,6 +181,7 @@ function markDeletedTraceItem(now, delta, gap) {
 
 function updateCountAndButton() {
   characterCount.textContent = textarea.value.length.toString();
+  resultCharacterCount.textContent = textarea.value.length.toString();
   leaveButton.disabled = frozen || state.traceItems.length === 0;
 }
 
@@ -183,15 +191,45 @@ function holdTrace() {
   textarea.disabled = true;
   leaveButton.textContent = "TRACE HELD";
   leaveButton.disabled = true;
-  typeAgainButton.hidden = false;
+  sourceText.textContent = textarea.value.trim() || "[sentence withheld]";
+  resultCharacterCount.textContent = textarea.value.length.toString();
+  resultSoundStatus.textContent = soundStatus.textContent;
   holdStatus.textContent = "Trace held. Type again to begin another action.";
   renderLiveTrace();
+  showResultStage();
+}
+
+function showHomeStage() {
+  resultStage.hidden = true;
+  resultStage.classList.remove("is-active");
+  resultStage.setAttribute("aria-hidden", "true");
+  homeStage.hidden = false;
+  window.setTimeout(() => {
+    homeStage.classList.add("is-active");
+    homeStage.removeAttribute("aria-hidden");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, 20);
+}
+
+function showResultStage() {
+  homeStage.classList.remove("is-active");
+  homeStage.setAttribute("aria-hidden", "true");
+  window.setTimeout(() => {
+    homeStage.hidden = true;
+    resultStage.hidden = false;
+    window.setTimeout(() => {
+      resultStage.classList.add("is-active");
+      resultStage.removeAttribute("aria-hidden");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }, 20);
+  }, 260);
 }
 
 async function enableMicrophone() {
   if (!navigator.mediaDevices?.getUserMedia) {
     microphoneState = "unavailable";
     soundStatus.textContent = "Sound trace unavailable. Typing rhythm only.";
+    resultSoundStatus.textContent = soundStatus.textContent;
     return;
   }
 
@@ -206,10 +244,12 @@ async function enableMicrophone() {
     microphoneState = "enabled";
     micButton.disabled = true;
     soundStatus.textContent = "Microphone enabled. Live amplitude only; no audio is recorded.";
+    resultSoundStatus.textContent = soundStatus.textContent;
     monitorAmplitude();
   } catch (error) {
     microphoneState = "unavailable";
     soundStatus.textContent = "Sound trace unavailable. Typing rhythm only.";
+    resultSoundStatus.textContent = soundStatus.textContent;
   }
 }
 

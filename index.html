@@ -7,19 +7,58 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <main class="homepage" aria-live="polite">
-      <section class="hero" aria-labelledby="input-title">
-        <aside class="side-note side-note-left" aria-label="Project note">
-          <p class="note-number">00 / SURFACE</p>
-          <p>Typing is treated as contact with a shared interface: a temporary action that leaves a visible remainder.</p>
-        </aside>
-
-        <div class="center-stage">
-          <header class="intro">
+    <main class="site-shell" aria-live="polite">
+      <section id="home-stage" class="stage home-stage is-active" aria-labelledby="input-title">
+        <div class="home-composition">
+          <header class="home-intro">
             <p class="kicker">SHARED SURFACE / RESIDUAL ACTION</p>
             <h1 id="input-title">Aftertyping</h1>
             <p class="statement">Your words will disappear. Only the action will remain.</p>
             <p class="description">Aftertyping translates pauses, deletions, repetitions, key frequency, and keyboard sound into visual traces of a past typing action.</p>
+          </header>
+
+          <section class="input-system" aria-label="Typing input controls">
+            <label class="sr-only" for="typing-surface">Type a short sentence</label>
+            <textarea
+              id="typing-surface"
+              maxlength="180"
+              rows="3"
+              placeholder="Type a short sentence here."
+              autocomplete="off"
+              spellcheck="false"
+            ></textarea>
+
+            <div class="control-strip">
+              <div class="sound-control">
+                <button id="enable-mic" class="secondary small" type="button">Enable microphone for keyboard sound</button>
+                <p id="sound-status">Sound trace inactive. Typing rhythm only.</p>
+              </div>
+              <p class="count-line"><span id="character-count">0</span>/180 characters recorded as action, not content.</p>
+            </div>
+
+            <div class="action-row">
+              <button id="leave-trace" type="button" disabled>LEAVE TRACE</button>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section id="result-stage" class="stage result-stage" aria-labelledby="result-title" hidden>
+        <aside class="side-note side-note-left" aria-label="Trace note">
+          <p class="note-number">00 / AFTER</p>
+          <p>The sentence is no longer the main object. What remains is the pressure, correction, and rhythm of the action.</p>
+        </aside>
+
+        <div class="result-composition">
+          <header class="result-intro">
+            <div>
+              <p class="kicker">TRACE LEFT / RESIDUAL SURFACE</p>
+              <h1 id="result-title">Aftertyping</h1>
+            </div>
+            <div class="result-copy">
+              <p class="statement">Your words will disappear. Only the action will remain.</p>
+              <p id="hold-status" class="hold-status" role="status">Trace held. Type again to begin another action.</p>
+            </div>
           </header>
 
           <section class="trace-system" aria-labelledby="trace-title">
@@ -28,7 +67,7 @@
                 <p class="panel-index">01 / LIVE TYPING TRACE</p>
                 <h2 id="trace-title">pauses become spaces / deletions remain / repetitions form clumps</h2>
               </div>
-              <p id="hold-status" class="hold-status" role="status">Live surface awaiting action.</p>
+              <p class="trace-status"><span id="result-character-count">0</span>/180 actions recorded</p>
             </div>
 
             <div class="trace-grid">
@@ -53,35 +92,19 @@
             </div>
           </section>
 
-          <section class="input-system" aria-label="Typing input controls">
-            <label class="sr-only" for="typing-surface">Type a short sentence</label>
-            <textarea
-              id="typing-surface"
-              maxlength="180"
-              rows="3"
-              placeholder="Type a short sentence here."
-              autocomplete="off"
-              spellcheck="false"
-            ></textarea>
-
-            <div class="control-strip">
-              <div class="sound-control">
-                <button id="enable-mic" class="secondary small" type="button">Enable microphone for keyboard sound</button>
-                <p id="sound-status">Sound trace inactive. Typing rhythm only.</p>
-              </div>
-              <p class="count-line"><span id="character-count">0</span>/180 characters recorded as action, not content.</p>
-            </div>
-
-            <div class="action-row">
-              <button id="leave-trace" type="button" disabled>LEAVE TRACE</button>
-              <button id="type-again" class="secondary" type="button" hidden>TYPE AGAIN</button>
+          <section class="source-panel" aria-label="Source sentence and trace status">
+            <p class="panel-index">02 / SOURCE SENTENCE</p>
+            <p id="source-text" class="source-text"></p>
+            <div class="result-meta">
+              <p id="result-sound-status">Sound trace inactive. Typing rhythm only.</p>
+              <button id="type-again" class="secondary" type="button">TYPE AGAIN</button>
             </div>
           </section>
         </div>
 
-        <aside class="side-note side-note-right" aria-label="Trace note">
-          <p class="note-number">02 / RULES</p>
-          <p>Deleted letters are not erased from the record. Repeated letters thicken. Pauses open visible distances in the line.</p>
+        <aside class="side-note side-note-right" aria-label="Trace rule note">
+          <p class="note-number">03 / RULES</p>
+          <p>Deleted letters remain as faint interruptions. Repetition thickens. Pauses open measured distances in the line.</p>
         </aside>
       </section>
     </main>
