@@ -22,9 +22,9 @@
   --outer-page-width: min(100rem, 100%);
   --main-stage-width: min(68rem, 100%);
   --page-padding: clamp(1.1rem, 2.5vw, 2.3rem);
-  --type-level-1: 16pt;
-  --type-level-2: 14pt;
-  --type-level-3: 12pt;
+  --type-level-1: 8pt;
+  --type-level-2: 7pt;
+  --type-level-3: 6pt;
   --track-label: 0.14em;
   --track-section: 0.1em;
   --track-body: 0.02em;
