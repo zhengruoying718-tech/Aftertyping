@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Aftertyping</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app" aria-live="polite">
+      <section id="input-stage" class="stage input-stage is-active" aria-labelledby="input-title">
+        <div class="input-panel">
+          <p class="kicker">shared surface / residual action</p>
+          <h1 id="input-title">Aftertyping</h1>
+          <p class="statement">Your words will disappear. Only the action will remain.</p>
+
+          <div class="live-panel" aria-label="Live kerning clump field">
+            <div class="live-panel-heading">
+              <span>01</span>
+              <span>live kerning clump field</span>
+            </div>
+            <svg id="live-clump" viewBox="0 0 980 260" role="img" aria-label="Live typographic trace generated while typing"></svg>
+          </div>
+
+          <label class="sr-only" for="typing-surface">Type a short sentence</label>
+          <textarea
+            id="typing-surface"
+            maxlength="180"
+            rows="3"
+            placeholder="Type a short sentence here."
+            autocomplete="off"
+            spellcheck="false"
+          ></textarea>
+
+          <div class="sound-row">
+            <button id="enable-mic" class="secondary small" type="button">Enable microphone for keyboard sound</button>
+            <p id="sound-status">Sound trace inactive. Typing rhythm only.</p>
+          </div>
+
+          <div class="input-footer">
+            <p><span id="character-count">0</span>/180 characters recorded as action, not content.</p>
+            <button id="leave-trace" type="button" disabled>Leave Trace</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="output-stage" class="stage output-stage" aria-labelledby="output-title" aria-hidden="true">
+        <div class="sheet-wrap">
+          <svg
+            id="trace-sheet"
+            class="trace-sheet"
+            viewBox="0 0 1400 1800"
+            role="img"
+            aria-labelledby="output-title output-description"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <title id="output-title">Aftertyping trace sheet</title>
+            <desc id="output-description">A printable horizontal notation sheet generated from a typing action.</desc>
+          </svg>
+        </div>
+        <div class="output-toolbar" aria-label="Trace actions">
+          <button id="type-again" type="button" class="secondary">Type Again</button>
+          <button id="export-png" type="button">Export PNG</button>
+        </div>
+      </section>
+    </main>
+    <script src="script.js" defer></script>
+  </body>
+</html>
