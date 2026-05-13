@@ -6,6 +6,11 @@ const soundStatus = document.querySelector("#sound-status");
 const characterCount = document.querySelector("#character-count");
 const liveTrace = document.querySelector("#live-trace");
 const homeLiveTrace = document.querySelector("#home-live-trace");
+const homeLivePrimary = document.querySelector("#home-live-primary");
+const homeLiveSecondary = document.querySelector("#home-live-secondary");
+const arrivalControls = document.querySelector("#arrival-controls");
+const respondButton = document.querySelector("#respond-trace");
+const typingControls = document.querySelector("#typing-controls");
 const homeStage = document.querySelector("#home-stage");
 const resultStage = document.querySelector("#result-stage");
 const sourceText = document.querySelector("#source-text");
@@ -49,6 +54,8 @@ let currentAmplitude = 0;
 let microphoneState = "inactive";
 let frozen = false;
 let settleFrame = 0;
+let interactionMode = "arrival";
+let previousTrace = loadPreviousTrace() || createSimulatedPreviousTrace();
 
 function createEmptyState() {
   return {
@@ -65,13 +72,105 @@ function createEmptyState() {
   };
 }
 
+function loadPreviousTrace() {
+  try {
+    const saved = window.localStorage.getItem("aftertyping.previousTrace");
+    if (!saved) return null;
+    const parsed = JSON.parse(saved);
+    if (!Array.isArray(parsed.traceItems) || !parsed.traceItems.length) return null;
+    return parsed;
+  } catch (error) {
+    return null;
+  }
+}
+
+function persistCurrentTrace() {
+  const trace = {
+    actionCount: state.events.length,
+    traceItems: state.traceItems.map((item) => ({
+      character: item.character,
+      normalized: item.normalized,
+      action: item.action,
+      pauseGap: item.pauseGap || 0,
+      deleted: Boolean(item.deleted),
+      repeated: Boolean(item.repeated),
+      amplitude: item.amplitude || 0,
+    })),
+  };
+
+  previousTrace = trace;
+
+  try {
+    window.localStorage.setItem("aftertyping.previousTrace", JSON.stringify(trace));
+  } catch (error) {
+    // Local persistence is optional; the trace still remains for this session.
+  }
+}
+
+function createSimulatedPreviousTrace() {
+  const fragment = [
+    ["s", {}],
+    ["o", {}],
+    ["m", { deleted: true }],
+    ["e", { pauseGap: 50 }],
+    ["o", {}],
+    ["n", {}],
+    ["e", { repeated: true }],
+    [" ", {}],
+    ["w", { pauseGap: 100 }],
+    ["a", {}],
+    ["s", { deleted: true }],
+    [" ", {}],
+    ["h", {}],
+    ["e", { repeated: true }],
+    ["r", {}],
+    ["e", { repeated: true }],
+    [".", { deleted: true, pauseGap: 150 }],
+  ];
+
+  return {
+    actionCount: 43,
+    traceItems: fragment.map(([character, options]) => ({
+      character,
+      normalized: normaliseStoredCharacter(character),
+      action: "type",
+      pauseGap: options.pauseGap || 0,
+      deleted: Boolean(options.deleted),
+      repeated: Boolean(options.repeated),
+      amplitude: 0,
+    })),
+  };
+}
+
+function normaliseStoredCharacter(character) {
+  if (character === " ") return "space";
+  return character.toLowerCase();
+}
+
+function showArrivalTrace() {
+  interactionMode = "arrival";
+  textarea.hidden = true;
+  typingControls.hidden = true;
+  arrivalControls.hidden = false;
+  homeLivePrimary.textContent = "A TRACE WAS LEFT HERE BEFORE YOU ARRIVED";
+  homeLiveSecondary.textContent = "source sentence withheld";
+  characterCount.textContent = String(previousTrace.actionCount || previousTrace.traceItems.length);
+  renderHomeTrace();
+}
+
 function resetState() {
   const fresh = createEmptyState();
   Object.assign(state, fresh);
   frozen = false;
   currentAmplitude = 0;
+  interactionMode = "typing";
   textarea.value = "";
   textarea.disabled = false;
+  textarea.hidden = false;
+  typingControls.hidden = false;
+  arrivalControls.hidden = true;
+  homeLivePrimary.textContent = "LIVE TRACE FORMING";
+  homeLiveSecondary.textContent = "pauses / deletions / repetitions";
   characterCount.textContent = "0";
   resultCharacterCount.textContent = "0";
   leaveButton.disabled = true;
@@ -191,12 +290,14 @@ function updateCountAndButton() {
 function holdTrace() {
   if (!state.traceItems.length) return;
   frozen = true;
+  interactionMode = "after";
   textarea.disabled = true;
   leaveButton.textContent = "TRACE HELD";
   leaveButton.disabled = true;
-  sourceText.textContent = textarea.value.trim() || "[sentence withheld]";
-  resultCharacterCount.textContent = textarea.value.length.toString();
+  sourceText.textContent = "SOURCE SENTENCE WITHHELD / ACTION RECORDED / TRACE LEFT FOR THE NEXT VIEWER.";
+  resultCharacterCount.textContent = state.events.length.toString();
   resultSoundStatus.textContent = soundStatus.textContent;
+  persistCurrentTrace();
   renderLiveTrace();
   showResultStage();
 }
@@ -340,7 +441,9 @@ function drawTraceItems() {
 
     const active = !frozen && now - item.createdAt < ACTIVE_MS;
     const fill = item.deleted ? COLORS.deleted : item.repeated ? COLORS.repeated : active ? COLORS.active : COLORS.settled;
-    const opacity = item.deleted ? 0.64 : item.repeated ? 0.98 : active ? 1 : 0.76;
+    const opacity = frozen
+      ? item.deleted ? 0.58 : item.repeated ? 0.82 : 0.28
+      : item.deleted ? 0.64 : item.repeated ? 0.98 : active ? 1 : 0.76;
     const fontSize = item.repeated ? 39 : 36;
     const itemY = item.deleted ? y + 12 : y;
     const itemX = item.repeated ? x - 4 : x;
@@ -390,18 +493,27 @@ function scheduleSettleRender() {
 }
 
 function renderHomeTrace() {
+  const traceItems = interactionMode === "arrival" ? previousTrace.traceItems : state.traceItems;
+  const actionCount = interactionMode === "arrival" ? previousTrace.actionCount || traceItems.length : state.events.length;
   homeLiveTrace.replaceChildren();
   homeSvgRect(0, 0, HOME_TRACE_WIDTH, HOME_TRACE_HEIGHT, COLORS.panel, "none");
   for (let y = 26; y < HOME_TRACE_HEIGHT - 24; y += 16) {
     homeSvgLine(28, y, HOME_TRACE_WIDTH - 28, y, COLORS.rule, { width: 0.8, opacity: 0.52 });
   }
+  homeSvgText(`${actionCount} actions / sentence withheld`, HOME_TRACE_WIDTH - 274, 38, {
+    size: 10,
+    fill: COLORS.text,
+    family: UI_FONT,
+    opacity: 0.54,
+    spacing: 1.1,
+  });
 
   const now = performance.now();
   let x = 42;
   let y = 92;
   const maxX = HOME_TRACE_WIDTH - 42;
 
-  if (!state.traceItems.length) {
+  if (!traceItems.length) {
     homeSvgText("trace forms here while typing", 42, 126, {
       size: 26,
       fill: COLORS.text,
@@ -411,7 +523,7 @@ function renderHomeTrace() {
     return;
   }
 
-  state.traceItems.forEach((item, index) => {
+  traceItems.forEach((item, index) => {
     const advance = item.normalized === "space" ? 26 : 19;
     x += item.pauseGap ? Math.min(item.pauseGap * 0.55, 122) : 0;
 
@@ -435,16 +547,18 @@ function renderHomeTrace() {
       return;
     }
 
-    const active = !frozen && now - item.createdAt < ACTIVE_MS;
+    const active = interactionMode === "typing" && !frozen && now - item.createdAt < ACTIVE_MS;
     const fill = item.deleted ? COLORS.deleted : item.repeated ? COLORS.repeated : active ? COLORS.active : COLORS.settled;
-    const opacity = item.deleted ? 0.66 : item.repeated ? 0.96 : active ? 1 : 0.76;
+    const opacity = interactionMode === "arrival" || interactionMode === "after"
+      ? item.deleted ? 0.56 : item.repeated ? 0.78 : 0.3
+      : item.deleted ? 0.66 : item.repeated ? 0.96 : active ? 1 : 0.76;
     const size = item.repeated ? 29 : 27;
     const itemY = item.deleted ? y + 8 : y;
     const itemX = item.repeated ? x - 3 : x;
 
     if (item.repeated) {
-      homeSvgText(item.character, itemX + 4, itemY + 1, { size, fill: COLORS.active, family: TRACE_FONT, opacity: 0.35 });
-      homeSvgText(item.character, itemX + 7, itemY + 1, { size, fill: COLORS.repeated, family: TRACE_FONT, opacity: 0.24 });
+      homeSvgText(item.character, itemX + 4, itemY + 1, { size, fill: COLORS.active, family: TRACE_FONT, opacity: interactionMode === "typing" ? 0.35 : 0.18 });
+      homeSvgText(item.character, itemX + 7, itemY + 1, { size, fill: COLORS.repeated, family: TRACE_FONT, opacity: interactionMode === "typing" ? 0.24 : 0.16 });
     }
 
     homeSvgText(item.character, itemX, itemY, { size, fill, family: TRACE_FONT, opacity });
@@ -570,6 +684,7 @@ textarea.addEventListener("input", () => {
   renderHomeTrace();
 });
 leaveButton.addEventListener("click", holdTrace);
+respondButton.addEventListener("click", resetState);
 typeAgainButton.addEventListener("click", resetState);
 micButton.addEventListener("click", enableMicrophone);
 
@@ -580,4 +695,4 @@ window.addEventListener("beforeunload", () => {
 });
 
 renderLiveTrace();
-renderHomeTrace();
+showArrivalTrace();

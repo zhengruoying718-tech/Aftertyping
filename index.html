@@ -20,15 +20,21 @@
           <section class="input-system" aria-label="Typing input controls">
             <div class="home-live-section" aria-label="Live trace forming while typing">
               <div class="home-live-heading">
-                <span>LIVE TRACE FORMING</span>
-                <span>pauses / deletions / repetitions</span>
+                <span id="home-live-primary">A TRACE WAS LEFT HERE BEFORE YOU ARRIVED</span>
+                <span id="home-live-secondary">source sentence withheld</span>
               </div>
               <svg id="home-live-trace" viewBox="0 0 1120 230" role="img" aria-label="Simplified live typing trace preview"></svg>
             </div>
 
             <label class="sr-only" for="typing-surface">Type a short sentence</label>
+            <div id="arrival-controls" class="control-strip">
+              <p class="count-line">THE SENTENCE IS GONE. ONLY THE ACTION REMAINS.</p>
+              <button id="respond-trace" type="button">RESPOND BY TYPING YOUR OWN TRACE</button>
+            </div>
+
             <textarea
               id="typing-surface"
+              hidden
               maxlength="180"
               rows="3"
               placeholder="Type a short sentence here."
@@ -36,7 +42,7 @@
               spellcheck="false"
             ></textarea>
 
-            <div class="control-strip">
+            <div id="typing-controls" class="control-strip" hidden>
               <div class="sound-control">
                 <button id="enable-mic" class="secondary small" type="button">Enable microphone for keyboard sound</button>
                 <p id="sound-status">SOUND TRACE INACTIVE</p>
