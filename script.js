@@ -169,8 +169,8 @@ function resetState() {
   textarea.hidden = false;
   typingControls.hidden = false;
   arrivalControls.hidden = true;
-  homeLivePrimary.textContent = "LIVE TRACE FORMING";
-  homeLiveSecondary.textContent = "pauses / deletions / repetitions";
+  homeLivePrimary.textContent = "NEW TRACE SURFACE";
+  homeLiveSecondary.textContent = "your action forms separately";
   characterCount.textContent = "0";
   resultCharacterCount.textContent = "0";
   leaveButton.disabled = true;
@@ -500,13 +500,19 @@ function renderHomeTrace() {
   for (let y = 26; y < HOME_TRACE_HEIGHT - 24; y += 16) {
     homeSvgLine(28, y, HOME_TRACE_WIDTH - 28, y, COLORS.rule, { width: 0.8, opacity: 0.52 });
   }
-  homeSvgText(`${actionCount} actions / sentence withheld`, HOME_TRACE_WIDTH - 274, 38, {
+  homeSvgText(`${actionCount} actions / source sentence withheld`, HOME_TRACE_WIDTH - 340, 38, {
     size: 10,
     fill: COLORS.text,
     family: UI_FONT,
     opacity: 0.54,
     spacing: 1.1,
   });
+
+  if (interactionMode === "arrival") {
+    homeSvgText("pause gap", 44, 42, { size: 9, fill: COLORS.text, family: UI_FONT, opacity: 0.54, spacing: 1.1 });
+    homeSvgText("deleted trace", 178, 42, { size: 9, fill: COLORS.text, family: UI_FONT, opacity: 0.54, spacing: 1.1 });
+    homeSvgText("repeated action", 342, 42, { size: 9, fill: COLORS.text, family: UI_FONT, opacity: 0.54, spacing: 1.1 });
+  }
 
   const now = performance.now();
   let x = 42;
