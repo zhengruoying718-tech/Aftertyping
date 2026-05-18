@@ -1,6 +1,7 @@
 const textarea = document.querySelector("#typing-surface");
 const leaveButton = document.querySelector("#leave-trace");
 const typeAgainButton = document.querySelector("#type-again");
+const exportButton = document.querySelector("#export-png");
 const micButton = document.querySelector("#enable-mic");
 const soundStatus = document.querySelector("#sound-status");
 const characterCount = document.querySelector("#character-count");
@@ -27,10 +28,13 @@ const LINE_HEIGHT = 58;
 const BASE_ADVANCE = 24;
 const SPACE_ADVANCE = 34;
 const ACTIVE_MS = 1300;
+const MAX_CHARACTERS = 500;
 const HOME_TRACE_WIDTH = 1120;
 const HOME_TRACE_HEIGHT = 230;
 const TRACE_FONT = '"Stamp Typo Regular", "Courier New", monospace';
 const UI_FONT = 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+
+textarea.maxLength = MAX_CHARACTERS;
 
 const COLORS = {
   panel: "#F2A1CC",
@@ -402,6 +406,15 @@ function drawTraceItems() {
   let x = TRACE_LEFT;
   let y = TRACE_TOP;
   const maxX = TRACE_WIDTH - TRACE_RIGHT;
+  const traceLength = state.traceItems.length;
+  const compact = traceLength > 240;
+  const dense = traceLength > 360;
+  const lineHeight = dense ? 32 : compact ? 38 : LINE_HEIGHT;
+  const baseAdvance = dense ? 12 : compact ? 15 : BASE_ADVANCE;
+  const spaceAdvance = dense ? 18 : compact ? 22 : SPACE_ADVANCE;
+  const pauseScale = dense ? 0.32 : compact ? 0.45 : 1;
+  const baseFontSize = dense ? 19 : compact ? 24 : 36;
+  const repeatedFontSize = dense ? 21 : compact ? 26 : 39;
 
   if (!state.traceItems.length) {
     svgText("type to disturb this field", TRACE_LEFT, 212, {
@@ -413,29 +426,30 @@ function drawTraceItems() {
     return;
   }
 
-  state.traceItems.forEach((item) => {
-    const advance = item.normalized === "space" ? SPACE_ADVANCE : BASE_ADVANCE;
-    x += item.pauseGap || 0;
+  state.traceItems.forEach((item, index) => {
+    const advance = item.normalized === "space" ? spaceAdvance : baseAdvance;
+    const scaledPauseGap = item.pauseGap ? Math.min(item.pauseGap * pauseScale, dense ? 74 : compact ? 104 : 220) : 0;
+    x += scaledPauseGap;
 
     if (x > maxX - advance) {
       x = TRACE_LEFT;
-      y += LINE_HEIGHT;
+      y += lineHeight;
     }
 
-    if (y > TRACE_HEIGHT - 70) {
-      y = TRACE_TOP + ((state.traceItems.indexOf(item) % 4) * LINE_HEIGHT);
-      x = TRACE_LEFT + ((state.traceItems.indexOf(item) % 9) * 12);
+    if (y > TRACE_HEIGHT - 54) {
+      y = TRACE_TOP + ((index % Math.max(4, Math.floor((TRACE_HEIGHT - TRACE_TOP - 54) / lineHeight))) * lineHeight);
+      x = TRACE_LEFT + ((index % 13) * (dense ? 7 : compact ? 9 : 12));
     }
 
     if (item.pauseGap) {
-      const markerX = Math.max(TRACE_LEFT, x - item.pauseGap + 10);
-      const markerWidth = Math.min(item.pauseGap - 16, 190);
-      svgRect(markerX, y - 29, markerWidth, 34, "none", COLORS.text, { opacity: 0.18, dasharray: "4 8" });
-      svgText("pause", markerX + 6, y - 36, { size: 9, fill: COLORS.text, opacity: 0.48, family: UI_FONT, spacing: 1.2 });
+      const markerX = Math.max(TRACE_LEFT, x - scaledPauseGap + 10);
+      const markerWidth = Math.min(Math.max(scaledPauseGap - 16, 14), dense ? 60 : compact ? 90 : 190);
+      svgRect(markerX, y - (dense ? 18 : 29), markerWidth, dense ? 22 : compact ? 28 : 34, "none", COLORS.text, { opacity: 0.18, dasharray: "4 8" });
+      if (!dense) svgText("pause", markerX + 6, y - (compact ? 24 : 36), { size: 9, fill: COLORS.text, opacity: 0.48, family: UI_FONT, spacing: 1.2 });
     }
 
     if (item.normalized === "space") {
-      x += SPACE_ADVANCE;
+      x += spaceAdvance;
       return;
     }
 
@@ -444,23 +458,23 @@ function drawTraceItems() {
     const opacity = frozen
       ? item.deleted ? 0.58 : item.repeated ? 0.82 : 0.28
       : item.deleted ? 0.64 : item.repeated ? 0.98 : active ? 1 : 0.76;
-    const fontSize = item.repeated ? 39 : 36;
-    const itemY = item.deleted ? y + 12 : y;
-    const itemX = item.repeated ? x - 4 : x;
+    const fontSize = item.repeated ? repeatedFontSize : baseFontSize;
+    const itemY = item.deleted ? y + (dense ? 7 : compact ? 9 : 12) : y;
+    const itemX = item.repeated ? x - (dense ? 2 : compact ? 3 : 4) : x;
 
     if (item.repeated) {
-      svgText(item.character, itemX + 4, itemY + 1, { size: fontSize, fill: COLORS.active, family: TRACE_FONT, opacity: 0.42 });
-      svgText(item.character, itemX + 8, itemY + 2, { size: fontSize, fill: COLORS.repeated, family: TRACE_FONT, opacity: 0.28 });
+      svgText(item.character, itemX + (dense ? 2 : 4), itemY + 1, { size: fontSize, fill: COLORS.active, family: TRACE_FONT, opacity: 0.42 });
+      svgText(item.character, itemX + (dense ? 4 : 8), itemY + 2, { size: fontSize, fill: COLORS.repeated, family: TRACE_FONT, opacity: 0.28 });
     }
 
     svgText(item.character, itemX, itemY, { size: fontSize, fill, family: TRACE_FONT, opacity });
 
     if (item.deleted) {
-      svgLine(itemX - 2, itemY - 13, itemX + 20, itemY - 22, COLORS.text, { width: 1.6, opacity: 0.46 });
-      svgLine(itemX + 2, itemY - 2, itemX + 24, itemY - 10, COLORS.text, { width: 1.2, opacity: 0.28 });
+      svgLine(itemX - 2, itemY - (dense ? 8 : 13), itemX + (dense ? 13 : 20), itemY - (dense ? 13 : 22), COLORS.text, { width: dense ? 1 : 1.6, opacity: 0.46 });
+      if (!dense) svgLine(itemX + 2, itemY - 2, itemX + (compact ? 18 : 24), itemY - (compact ? 8 : 10), COLORS.text, { width: 1.2, opacity: 0.28 });
     }
 
-    x += item.repeated ? BASE_ADVANCE * 0.72 : advance;
+    x += item.repeated ? baseAdvance * 0.72 : advance;
   });
 }
 
@@ -515,6 +529,15 @@ function renderHomeTrace() {
   }
 
   const now = performance.now();
+  const traceLength = traceItems.length;
+  const compact = traceLength > 240;
+  const dense = traceLength > 360;
+  const lineHeight = dense ? 24 : compact ? 30 : 42;
+  const characterAdvance = dense ? 8 : compact ? 12 : 19;
+  const spaceAdvance = dense ? 12 : compact ? 16 : 26;
+  const pauseScale = dense ? 0.16 : compact ? 0.28 : 0.55;
+  const baseSize = dense ? 14 : compact ? 20 : 27;
+  const repeatedSize = dense ? 16 : compact ? 22 : 29;
   let x = 42;
   let y = 92;
   const maxX = HOME_TRACE_WIDTH - 42;
@@ -530,22 +553,23 @@ function renderHomeTrace() {
   }
 
   traceItems.forEach((item, index) => {
-    const advance = item.normalized === "space" ? 26 : 19;
-    x += item.pauseGap ? Math.min(item.pauseGap * 0.55, 122) : 0;
+    const advance = item.normalized === "space" ? spaceAdvance : characterAdvance;
+    const scaledPauseGap = item.pauseGap ? Math.min(item.pauseGap * pauseScale, dense ? 44 : compact ? 72 : 122) : 0;
+    x += scaledPauseGap;
 
     if (x > maxX - advance) {
       x = 42;
-      y += 42;
+      y += lineHeight;
     }
 
-    if (y > HOME_TRACE_HEIGHT - 34) {
-      y = 92 + ((index % 3) * 42);
-      x = 42 + ((index % 11) * 9);
+    if (y > HOME_TRACE_HEIGHT - 28) {
+      y = 92 + ((index % Math.max(3, Math.floor((HOME_TRACE_HEIGHT - 92 - 28) / lineHeight))) * lineHeight);
+      x = 42 + ((index % 17) * (dense ? 5 : compact ? 7 : 9));
     }
 
     if (item.pauseGap) {
-      const gapWidth = Math.min(Math.max(item.pauseGap * 0.55 - 12, 18), 104);
-      homeSvgLine(Math.max(42, x - gapWidth), y - 19, x - 8, y - 19, COLORS.text, { width: 1, opacity: 0.24, dasharray: "3 7" });
+      const gapWidth = Math.min(Math.max(scaledPauseGap - 12, dense ? 8 : 18), dense ? 38 : compact ? 58 : 104);
+      homeSvgLine(Math.max(42, x - gapWidth), y - (dense ? 11 : 19), x - 8, y - (dense ? 11 : 19), COLORS.text, { width: 1, opacity: 0.24, dasharray: "3 7" });
     }
 
     if (item.normalized === "space") {
@@ -558,9 +582,9 @@ function renderHomeTrace() {
     const opacity = interactionMode === "arrival" || interactionMode === "after"
       ? item.deleted ? 0.56 : item.repeated ? 0.78 : 0.3
       : item.deleted ? 0.66 : item.repeated ? 0.96 : active ? 1 : 0.76;
-    const size = item.repeated ? 29 : 27;
-    const itemY = item.deleted ? y + 8 : y;
-    const itemX = item.repeated ? x - 3 : x;
+    const size = item.repeated ? repeatedSize : baseSize;
+    const itemY = item.deleted ? y + (dense ? 5 : 8) : y;
+    const itemX = item.repeated ? x - (dense ? 2 : 3) : x;
 
     if (item.repeated) {
       homeSvgText(item.character, itemX + 4, itemY + 1, { size, fill: COLORS.active, family: TRACE_FONT, opacity: interactionMode === "typing" ? 0.35 : 0.18 });
@@ -570,10 +594,10 @@ function renderHomeTrace() {
     homeSvgText(item.character, itemX, itemY, { size, fill, family: TRACE_FONT, opacity });
 
     if (item.deleted) {
-      homeSvgLine(itemX - 1, itemY - 10, itemX + 18, itemY - 17, COLORS.text, { width: 1.2, opacity: 0.36 });
+      homeSvgLine(itemX - 1, itemY - (dense ? 6 : 10), itemX + (dense ? 10 : 18), itemY - (dense ? 10 : 17), COLORS.text, { width: dense ? 1 : 1.2, opacity: 0.36 });
     }
 
-    x += item.repeated ? advance * 0.72 : advance;
+    x += item.repeated ? characterAdvance * 0.72 : advance;
   });
 }
 
@@ -679,6 +703,74 @@ function svgText(content, x, y, options = {}) {
   return node;
 }
 
+
+function collectPageStyles() {
+  return Array.from(document.styleSheets)
+    .map((sheet) => {
+      try {
+        return Array.from(sheet.cssRules).map((rule) => rule.cssText).join("\n");
+      } catch (error) {
+        return "";
+      }
+    })
+    .join("\n");
+}
+
+function exportPng() {
+  const bounds = resultStage.getBoundingClientRect();
+  const width = Math.ceil(bounds.width || 1400);
+  const height = Math.ceil(bounds.height || 900);
+  const clone = resultStage.cloneNode(true);
+  clone.removeAttribute("hidden");
+  clone.removeAttribute("aria-hidden");
+  clone.classList.add("is-active");
+  clone.style.margin = "0";
+  clone.style.opacity = "1";
+  clone.style.transform = "none";
+  clone.style.width = `${width}px`;
+  clone.style.minHeight = `${height}px`;
+
+  const style = document.createElement("style");
+  style.textContent = `${collectPageStyles()}\nbody{margin:0;background:#050505;}.stage{opacity:1;transform:none;}`;
+
+  const wrapper = document.createElement("div");
+  wrapper.setAttribute("xmlns", "http://www.w3.org/1999/xhtml");
+  wrapper.style.background = "#050505";
+  wrapper.style.color = "#F5F3EF";
+  wrapper.style.width = `${width}px`;
+  wrapper.style.minHeight = `${height}px`;
+  wrapper.append(style, clone);
+
+  const serialized = new XMLSerializer().serializeToString(wrapper);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><foreignObject width="100%" height="100%">${serialized}</foreignObject></svg>`;
+  const blob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const image = new Image();
+
+  image.onload = () => {
+    const canvas = document.createElement("canvas");
+    const scale = 2;
+    canvas.width = width * scale;
+    canvas.height = height * scale;
+    const context = canvas.getContext("2d");
+    context.fillStyle = "#050505";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    URL.revokeObjectURL(url);
+
+    const link = document.createElement("a");
+    link.download = `aftertyping-trace-${Date.now()}.png`;
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+  };
+
+  image.onerror = () => {
+    URL.revokeObjectURL(url);
+  };
+
+  image.src = url;
+}
+
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
@@ -692,6 +784,7 @@ textarea.addEventListener("input", () => {
 leaveButton.addEventListener("click", holdTrace);
 respondButton.addEventListener("click", resetState);
 typeAgainButton.addEventListener("click", resetState);
+exportButton.addEventListener("click", exportPng);
 micButton.addEventListener("click", enableMicrophone);
 
 window.addEventListener("beforeunload", () => {

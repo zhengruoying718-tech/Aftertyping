@@ -35,7 +35,7 @@
             <textarea
               id="typing-surface"
               hidden
-              maxlength="180"
+              maxlength="500"
               rows="3"
               placeholder="Type a short sentence here."
               autocomplete="off"
@@ -47,7 +47,7 @@
                 <button id="enable-mic" class="secondary small" type="button">Enable microphone for keyboard sound</button>
                 <p id="sound-status">SOUND TRACE INACTIVE</p>
               </div>
-              <p class="count-line"><span id="character-count">0</span>/180 ACTIONS RECORDED</p>
+              <p class="count-line"><span id="character-count">0</span>/500 ACTIONS RECORDED</p>
               <button id="leave-trace" type="button" disabled>LEAVE TRACE</button>
             </div>
           </section>
@@ -74,7 +74,7 @@
                 <p class="panel-index">01 / LIVE TYPING TRACE</p>
                 <h2 id="trace-title">pauses become spaces / deletions remain / repetitions form clumps</h2>
               </div>
-              <p class="trace-status"><span id="result-character-count">0</span>/180 actions recorded</p>
+              <p class="trace-status"><span id="result-character-count">0</span>/500 actions recorded</p>
             </div>
 
             <div class="trace-grid">
@@ -105,6 +105,7 @@
             <div class="result-meta">
               <p id="result-sound-status">SOUND TRACE INACTIVE</p>
               <button id="type-again" class="secondary" type="button">TYPE AGAIN</button>
+              <button id="export-png" type="button">EXPORT PNG</button>
             </div>
           </section>
         </div>
