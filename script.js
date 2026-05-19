@@ -1,7 +1,8 @@
 const textarea = document.querySelector("#typing-surface");
 const leaveButton = document.querySelector("#leave-trace");
 const typeAgainButton = document.querySelector("#type-again");
-const exportButton = document.querySelector("#export-png");
+const exportSvgButton = document.querySelector("#export-svg");
+const exportPngButton = document.querySelector("#export-png");
 const micButton = document.querySelector("#enable-mic");
 const soundStatus = document.querySelector("#sound-status");
 const characterCount = document.querySelector("#character-count");
@@ -704,56 +705,62 @@ function svgText(content, x, y, options = {}) {
 }
 
 
-function collectPageStyles() {
-  return Array.from(document.styleSheets)
-    .map((sheet) => {
-      try {
-        return Array.from(sheet.cssRules).map((rule) => rule.cssText).join("\n");
-      } catch (error) {
-        return "";
-      }
-    })
-    .join("\n");
+function getTraceSvgClone() {
+  const clone = liveTrace.cloneNode(true);
+  const viewBox = clone.getAttribute("viewBox") || `0 0 ${TRACE_WIDTH} ${TRACE_HEIGHT}`;
+  const [, , viewBoxWidth = TRACE_WIDTH, viewBoxHeight = TRACE_HEIGHT] = viewBox.split(/\s+/).map(Number);
+  clone.setAttribute("xmlns", SVG_NS);
+  clone.setAttribute("width", String(viewBoxWidth));
+  clone.setAttribute("height", String(viewBoxHeight));
+  clone.setAttribute("viewBox", viewBox);
+  clone.setAttribute("role", "img");
+  clone.setAttribute("aria-label", "Aftertyping exported trace panel");
+
+  const title = document.createElementNS(SVG_NS, "title");
+  title.textContent = "Aftertyping trace panel";
+  clone.prepend(title);
+
+  return clone;
 }
 
-function exportPng() {
-  const bounds = resultStage.getBoundingClientRect();
-  const width = Math.ceil(bounds.width || 1400);
-  const height = Math.ceil(bounds.height || 900);
-  const clone = resultStage.cloneNode(true);
-  clone.removeAttribute("hidden");
-  clone.removeAttribute("aria-hidden");
-  clone.classList.add("is-active");
-  clone.style.margin = "0";
-  clone.style.opacity = "1";
-  clone.style.transform = "none";
-  clone.style.width = `${width}px`;
-  clone.style.minHeight = `${height}px`;
+function serializeTraceSvg() {
+  const clone = getTraceSvgClone();
+  const serialized = new XMLSerializer().serializeToString(clone);
+  return serialized.startsWith("<?xml") ? serialized : `<?xml version="1.0" encoding="UTF-8"?>\n${serialized}`;
+}
 
-  const style = document.createElement("style");
-  style.textContent = `${collectPageStyles()}\nbody{margin:0;background:#050505;}.stage{opacity:1;transform:none;}`;
-
-  const wrapper = document.createElement("div");
-  wrapper.setAttribute("xmlns", "http://www.w3.org/1999/xhtml");
-  wrapper.style.background = "#050505";
-  wrapper.style.color = "#F5F3EF";
-  wrapper.style.width = `${width}px`;
-  wrapper.style.minHeight = `${height}px`;
-  wrapper.append(style, clone);
-
-  const serialized = new XMLSerializer().serializeToString(wrapper);
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><foreignObject width="100%" height="100%">${serialized}</foreignObject></svg>`;
-  const blob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
+function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function downloadTraceSvg() {
+  const source = serializeTraceSvg();
+  const blob = new Blob([source], { type: "image/svg+xml;charset=utf-8" });
+  downloadBlob(blob, "aftertyping-trace.svg");
+}
+
+function downloadTracePng() {
+  const source = serializeTraceSvg();
+  const svgBlob = new Blob([source], { type: "image/svg+xml;charset=utf-8" });
+  const url = URL.createObjectURL(svgBlob);
   const image = new Image();
+  const viewBox = liveTrace.getAttribute("viewBox") || `0 0 ${TRACE_WIDTH} ${TRACE_HEIGHT}`;
+  const [, , viewBoxWidth = TRACE_WIDTH, viewBoxHeight = TRACE_HEIGHT] = viewBox.split(/\s+/).map(Number);
+  const scale = 2;
 
   image.onload = () => {
     const canvas = document.createElement("canvas");
-    const scale = 2;
-    canvas.width = width * scale;
-    canvas.height = height * scale;
+    canvas.width = viewBoxWidth * scale;
+    canvas.height = viewBoxHeight * scale;
     const context = canvas.getContext("2d");
-    context.fillStyle = "#050505";
+    context.fillStyle = COLORS.panel;
     context.fillRect(0, 0, canvas.width, canvas.height);
     context.drawImage(image, 0, 0, canvas.width, canvas.height);
     URL.revokeObjectURL(url);
@@ -761,7 +768,9 @@ function exportPng() {
     const link = document.createElement("a");
     link.download = `aftertyping-trace-${Date.now()}.png`;
     link.href = canvas.toDataURL("image/png");
+    document.body.appendChild(link);
     link.click();
+    link.remove();
   };
 
   image.onerror = () => {
@@ -784,7 +793,8 @@ textarea.addEventListener("input", () => {
 leaveButton.addEventListener("click", holdTrace);
 respondButton.addEventListener("click", resetState);
 typeAgainButton.addEventListener("click", resetState);
-exportButton.addEventListener("click", exportPng);
+exportSvgButton.addEventListener("click", downloadTraceSvg);
+exportPngButton.addEventListener("click", downloadTracePng);
 micButton.addEventListener("click", enableMicrophone);
 
 window.addEventListener("beforeunload", () => {
