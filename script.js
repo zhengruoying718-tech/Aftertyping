@@ -7,6 +7,11 @@ const micButton = document.querySelector("#enable-mic");
 const soundStatus = document.querySelector("#sound-status");
 const characterCount = document.querySelector("#character-count");
 const liveTrace = document.querySelector("#live-trace");
+const soundScore = document.querySelector("#sound-score");
+const textTracePanel = document.querySelector("#text-trace-panel");
+const soundScorePanel = document.querySelector("#sound-score-panel");
+const textTraceTab = document.querySelector("#text-trace-tab");
+const soundScoreTab = document.querySelector("#sound-score-tab");
 const homeLiveTrace = document.querySelector("#home-live-trace");
 const homeLivePrimary = document.querySelector("#home-live-primary");
 const homeLiveSecondary = document.querySelector("#home-live-secondary");
@@ -32,10 +37,24 @@ const ACTIVE_MS = 1300;
 const MAX_CHARACTERS = 500;
 const HOME_TRACE_WIDTH = 1120;
 const HOME_TRACE_HEIGHT = 230;
+const SOUND_SCORE_WIDTH = 1120;
+const SOUND_SCORE_MIN_HEIGHT = 430;
 const TRACE_FONT = '"Stamp Typo Regular", "Courier New", monospace';
 const UI_FONT = 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
 
 textarea.maxLength = MAX_CHARACTERS;
+
+const SOUND_SCORE_COLORS = {
+  background: "#F6F1E8",
+  guide: "#D8D1C7",
+  label: "#151515",
+  secondary: "#6E675F",
+  input: "#2F8CFF",
+  thinking: "#F2D35E",
+  revision: "#F4633A",
+  flow: "#17C6A3",
+  shift: "#8A63D2",
+};
 
 const COLORS = {
   panel: "#F2A1CC",
@@ -78,6 +97,8 @@ function createEmptyState() {
     repeated: new Map(),
     soundPeaks: [],
     activeTraceByPosition: [],
+    soundScoreActions: [],
+    pendingRevisionShift: false,
     lastTypedCharacter: "",
   };
 }
@@ -178,6 +199,10 @@ function resetState() {
   textarea.value = "";
   lastTextareaValue = "";
   pendingInputAction = null;
+  setResultView("text");
+  soundScore.replaceChildren();
+  soundScore.setAttribute("viewBox", `0 0 ${SOUND_SCORE_WIDTH} ${SOUND_SCORE_MIN_HEIGHT}`);
+  soundScore.setAttribute("height", String(SOUND_SCORE_MIN_HEIGHT));
   textarea.disabled = false;
   textarea.hidden = false;
   typingControls.hidden = false;
@@ -285,6 +310,8 @@ function recordInputChange() {
     insertTraceTextAt(edit.insertedText, edit.start, now, delta, edit.deletedCount ? 0 : gap);
   }
 
+  recordSoundScoreEdit(edit, now, delta);
+
   lastTextareaValue = currentValue;
   pendingInputAction = null;
   state.lastAt = now;
@@ -341,6 +368,88 @@ function getPendingTextareaEdit(previousValue, currentValue) {
     deletedCount,
     insertedText,
   };
+}
+
+function recordSoundScoreEdit(edit, now, delta) {
+  const at = now - state.startedAt;
+  const amplitude = getNearbyAmplitude(at);
+
+  if (delta > 800) {
+    state.soundScoreActions.push({
+      type: "thinking",
+      timestamp: at,
+      duration: delta,
+      amplitude,
+      source: "pause",
+    });
+  }
+
+  if (delta > 2500) {
+    state.soundScoreActions.push({
+      type: "shift",
+      timestamp: at,
+      duration: delta,
+      amplitude,
+      source: "pause",
+    });
+  }
+
+  if (edit.deletedCount) {
+    state.soundScoreActions.push({
+      type: "revision",
+      timestamp: at,
+      duration: Math.max(1, edit.deletedCount),
+      amplitude,
+      source: "deletion",
+    });
+
+    const recentDeletionCount = state.soundScoreActions
+      .filter((action) => action.type === "revision" && at - action.timestamp <= 1500)
+      .reduce((total, action) => total + (action.duration || 1), 0);
+    if (recentDeletionCount >= 5) state.pendingRevisionShift = true;
+  }
+
+  if (!edit.insertedText) return;
+
+  if (state.pendingRevisionShift) {
+    state.soundScoreActions.push({
+      type: "shift",
+      timestamp: at,
+      duration: 0,
+      amplitude,
+      source: "revision",
+    });
+    state.pendingRevisionShift = false;
+  }
+
+  Array.from(edit.insertedText).forEach((character, index) => {
+    const timestamp = at + index * 6;
+    if (character === "\n") {
+      state.soundScoreActions.push({
+        type: "shift",
+        timestamp,
+        duration: 0,
+        amplitude,
+        source: "enter",
+      });
+      return;
+    }
+
+    state.soundScoreActions.push({
+      type: "input",
+      timestamp,
+      duration: 0,
+      amplitude,
+      source: "keydown",
+    });
+  });
+}
+
+function getNearbyAmplitude(at) {
+  const nearby = state.soundPeaks
+    .filter((peak) => Math.abs(peak.at - at) <= 120)
+    .reduce((strongest, peak) => Math.max(strongest, peak.amplitude || 0), 0);
+  return nearby || currentAmplitude || 0.12;
 }
 
 function insertTraceTextAt(text, position, now, delta, gap) {
@@ -426,6 +535,8 @@ function holdTrace() {
   resultSoundStatus.textContent = soundStatus.textContent;
   persistCurrentTrace();
   renderLiveTrace();
+  renderSoundScore();
+  setResultView("text");
   showResultStage();
 }
 
@@ -856,6 +967,289 @@ function renderHomeTrace() {
   flushDeletedRun();
 }
 
+function setResultView(view) {
+  const showSound = view === "sound";
+  textTracePanel.hidden = showSound;
+  soundScorePanel.hidden = !showSound;
+  textTraceTab.classList.toggle("is-selected", !showSound);
+  soundScoreTab.classList.toggle("is-selected", showSound);
+  textTraceTab.setAttribute("aria-selected", String(!showSound));
+  soundScoreTab.setAttribute("aria-selected", String(showSound));
+}
+
+function renderSoundScore() {
+  const marks = layoutSoundScoreMarks(buildSoundScoreMarks());
+  const scoreHeight = Math.max(SOUND_SCORE_MIN_HEIGHT, marks.height);
+  soundScore.setAttribute("viewBox", `0 0 ${SOUND_SCORE_WIDTH} ${scoreHeight}`);
+  soundScore.setAttribute("height", String(scoreHeight));
+  soundScore.replaceChildren();
+
+  soundSvgRect(0, 0, SOUND_SCORE_WIDTH, scoreHeight, SOUND_SCORE_COLORS.background, "none");
+  for (let y = 74; y < scoreHeight - 28; y += 26) {
+    soundSvgLine(44, y, SOUND_SCORE_WIDTH - 44, y, SOUND_SCORE_COLORS.guide, { width: 0.8, opacity: 0.72 });
+  }
+
+  soundSvgText("02 / KEYBOARD SOUND SCORE", 58, 48, {
+    size: 15,
+    fill: SOUND_SCORE_COLORS.label,
+    family: UI_FONT,
+    weight: 700,
+    spacing: 1.4,
+  });
+
+  drawSoundScoreLegend();
+
+  if (!marks.items.length) {
+    soundSvgText("no keyboard actions recorded", 58, 156, {
+      size: 13,
+      fill: SOUND_SCORE_COLORS.secondary,
+      family: UI_FONT,
+      spacing: 1.1,
+    });
+    return;
+  }
+
+  marks.items.forEach((mark) => drawSoundScoreMark(mark));
+}
+
+function buildSoundScoreMarks() {
+  const baseActions = state.soundScoreActions
+    .filter((action) => ["input", "thinking", "revision", "shift"].includes(action.type))
+    .map((action) => ({ ...action }));
+  const flowMarks = buildFlowMarks(baseActions);
+  const grouped = groupRevisionMarks([...baseActions, ...flowMarks]);
+  return grouped.sort((a, b) => a.timestamp - b.timestamp || categoryOrder(a.type) - categoryOrder(b.type));
+}
+
+function buildFlowMarks(actions) {
+  const flowMarks = [];
+  let burst = [];
+
+  const flushBurst = () => {
+    if (burst.length >= 6) {
+      const intervals = burst.slice(1).map((action, index) => action.timestamp - burst[index].timestamp);
+      const average = intervals.reduce((total, value) => total + value, 0) / intervals.length;
+      if (average < 220) {
+        const middle = burst[Math.floor(burst.length / 2)];
+        flowMarks.push({
+          type: "flow",
+          timestamp: middle.timestamp,
+          duration: burst[burst.length - 1].timestamp - burst[0].timestamp,
+          amplitude: middle.amplitude || 0.12,
+          source: "burst",
+        });
+      }
+    }
+    burst = [];
+  };
+
+  actions.sort((a, b) => a.timestamp - b.timestamp).forEach((action) => {
+    if (action.type !== "input") {
+      flushBurst();
+      return;
+    }
+
+    if (burst.length && action.timestamp - burst[burst.length - 1].timestamp >= 320) flushBurst();
+    burst.push(action);
+  });
+
+  flushBurst();
+  return flowMarks;
+}
+
+function groupRevisionMarks(actions) {
+  const grouped = [];
+  const revisions = actions.filter((action) => action.type === "revision").sort((a, b) => a.timestamp - b.timestamp);
+  const consumedRevisions = new Set();
+
+  revisions.forEach((action, index) => {
+    if (consumedRevisions.has(index)) return;
+    let groupEnd = action.timestamp;
+    let count = action.duration || 1;
+    let amplitude = action.amplitude || 0.12;
+    consumedRevisions.add(index);
+
+    revisions.slice(index + 1).forEach((nextAction, offset) => {
+      const nextIndex = index + 1 + offset;
+      if (!consumedRevisions.has(nextIndex) && nextAction.timestamp - groupEnd <= 450) {
+        consumedRevisions.add(nextIndex);
+        groupEnd = nextAction.timestamp;
+        count += nextAction.duration || 1;
+        amplitude = Math.max(amplitude, nextAction.amplitude || 0.12);
+      }
+    });
+
+    grouped.push({
+      ...action,
+      duration: count,
+      amplitude,
+    });
+  });
+
+  actions.forEach((action) => {
+    if (action.type !== "revision") grouped.push(action);
+  });
+
+  return grouped;
+}
+
+function layoutSoundScoreMarks(actions) {
+  const items = [];
+  const left = 58;
+  const right = SOUND_SCORE_WIDTH - 58;
+  const rowHeight = 72;
+  let x = left;
+  let y = 144;
+  let previousAt = 0;
+
+  actions.forEach((action) => {
+    const gap = clamp((action.timestamp - previousAt) / 18, 10, 76);
+    const size = getSoundScoreMarkSize(action);
+    if (x + gap + size.width > right) {
+      x = left;
+      y += rowHeight;
+    } else {
+      x += gap;
+    }
+
+    items.push({ ...action, ...size, x, y });
+    x += size.width;
+    previousAt = action.timestamp;
+  });
+
+  return { items, height: y + rowHeight + 40 };
+}
+
+function getSoundScoreMarkSize(action) {
+  if (action.type === "thinking") {
+    return { width: action.duration > 2500 ? 104 : action.duration > 1500 ? 72 : 42, height: 8 };
+  }
+
+  if (action.type === "revision") {
+    return { width: clamp((action.duration || 1) * 12, 34, 132), height: 10 };
+  }
+
+  if (action.type === "flow") return { width: 22, height: 22 };
+  if (action.type === "shift") return { width: 16, height: 42 };
+
+  return {
+    width: 9,
+    height: clamp((action.amplitude || 0.12) * 90, 16, 42),
+  };
+}
+
+function drawSoundScoreLegend() {
+  const legend = [
+    ["INPUT", SOUND_SCORE_COLORS.input],
+    ["THINKING", SOUND_SCORE_COLORS.thinking],
+    ["REVISION", SOUND_SCORE_COLORS.revision],
+    ["FLOW", SOUND_SCORE_COLORS.flow],
+    ["SHIFT", SOUND_SCORE_COLORS.shift],
+  ];
+  let x = SOUND_SCORE_WIDTH - 430;
+
+  legend.forEach(([label, color]) => {
+    soundSvgRect(x, 36, 10, 10, color, "none");
+    soundSvgText(label, x + 16, 45, {
+      size: 9,
+      fill: SOUND_SCORE_COLORS.secondary,
+      family: UI_FONT,
+      spacing: 1.2,
+    });
+    x += label === "THINKING" || label === "REVISION" ? 96 : 74;
+  });
+}
+
+function drawSoundScoreMark(mark) {
+  if (mark.type === "input") {
+    const opacity = clamp(0.5 + (mark.amplitude || 0.12) * 3, 0.58, 1);
+    soundSvgRect(mark.x, mark.y - mark.height, mark.width, mark.height, SOUND_SCORE_COLORS.input, "none", { opacity });
+    return;
+  }
+
+  if (mark.type === "thinking") {
+    soundSvgRect(mark.x, mark.y - 6, mark.width, mark.height, SOUND_SCORE_COLORS.thinking, "none", { opacity: 0.92 });
+    return;
+  }
+
+  if (mark.type === "revision") {
+    soundSvgRect(mark.x, mark.y - 8, mark.width, mark.height, SOUND_SCORE_COLORS.revision, "none", { opacity: 0.94 });
+    return;
+  }
+
+  if (mark.type === "flow") {
+    const cx = mark.x + mark.width / 2;
+    const cy = mark.y - 11;
+    soundSvgPolygon(`${cx},${cy - 15} ${cx + 10},${cy} ${cx},${cy + 15} ${cx - 10},${cy}`, SOUND_SCORE_COLORS.flow, { opacity: 0.94 });
+    return;
+  }
+
+  if (mark.type === "shift") {
+    const cx = mark.x + mark.width / 2;
+    soundSvgPolygon(`${cx},${mark.y - mark.height} ${cx + 9},${mark.y - mark.height / 2} ${cx},${mark.y + 2} ${cx - 9},${mark.y - mark.height / 2}`, SOUND_SCORE_COLORS.shift, { opacity: 0.94 });
+  }
+}
+
+function categoryOrder(type) {
+  return ["thinking", "revision", "input", "flow", "shift"].indexOf(type);
+}
+
+function soundSvgEl(tag, attributes = {}) {
+  const node = document.createElementNS(SVG_NS, tag);
+  Object.entries(attributes).forEach(([key, value]) => {
+    if (value !== undefined && value !== null) node.setAttribute(key, String(value));
+  });
+  soundScore.appendChild(node);
+  return node;
+}
+
+function soundSvgRect(x, y, width, height, fill = "none", stroke = "none", options = {}) {
+  return soundSvgEl("rect", {
+    x,
+    y,
+    width,
+    height,
+    fill,
+    stroke,
+    opacity: options.opacity,
+  });
+}
+
+function soundSvgLine(x1, y1, x2, y2, stroke, options = {}) {
+  return soundSvgEl("line", {
+    x1,
+    y1,
+    x2,
+    y2,
+    stroke,
+    "stroke-width": options.width || 1,
+    opacity: options.opacity,
+  });
+}
+
+function soundSvgPolygon(points, fill, options = {}) {
+  return soundSvgEl("polygon", {
+    points,
+    fill,
+    opacity: options.opacity,
+  });
+}
+
+function soundSvgText(content, x, y, options = {}) {
+  const node = soundSvgEl("text", {
+    x,
+    y,
+    fill: options.fill || SOUND_SCORE_COLORS.label,
+    opacity: options.opacity,
+    "font-family": options.family || UI_FONT,
+    "font-size": options.size || 12,
+    "font-weight": options.weight || 400,
+    "letter-spacing": options.spacing,
+  });
+  node.textContent = content;
+  return node;
+}
+
 function homeSvgEl(tag, attributes = {}) {
   const node = document.createElementNS(SVG_NS, tag);
   Object.entries(attributes).forEach(([key, value]) => {
@@ -1045,6 +1439,8 @@ respondButton.addEventListener("click", resetState);
 typeAgainButton.addEventListener("click", resetState);
 exportSvgButton.addEventListener("click", downloadTraceSvg);
 exportPngButton.addEventListener("click", downloadTracePng);
+textTraceTab.addEventListener("click", () => setResultView("text"));
+soundScoreTab.addEventListener("click", () => setResultView("sound"));
 micButton.addEventListener("click", enableMicrophone);
 
 window.addEventListener("beforeunload", () => {

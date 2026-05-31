@@ -68,7 +68,13 @@
             </div>
           </header>
 
-          <section class="trace-system" aria-labelledby="trace-title">
+          <div class="result-view-switch" role="tablist" aria-label="Result view">
+            <button id="text-trace-tab" class="secondary small is-selected" type="button" aria-controls="text-trace-panel" aria-selected="true">TEXT TRACE</button>
+            <span>/</span>
+            <button id="sound-score-tab" class="secondary small" type="button" aria-controls="sound-score-panel" aria-selected="false">SOUND SCORE</button>
+          </div>
+
+          <section id="text-trace-panel" class="trace-system" aria-labelledby="trace-title">
             <div class="trace-header">
               <div>
                 <p class="panel-index">01 / LIVE TYPING TRACE</p>
@@ -96,6 +102,12 @@
               <span><i class="key-deleted"></i>deleted</span>
               <span><i class="key-repeated"></i>repeated</span>
               <span><i class="key-pause"></i>pause gap</span>
+            </div>
+          </section>
+
+          <section id="sound-score-panel" class="sound-score-system" aria-label="Keyboard sound score" hidden>
+            <div class="sound-score-wrap">
+              <svg id="sound-score" viewBox="0 0 1120 430" role="img" aria-label="Keyboard sound score generated from typing behaviour"></svg>
             </div>
           </section>
 
