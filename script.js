@@ -60,6 +60,10 @@ let microphoneState = "inactive";
 let frozen = false;
 let settleFrame = 0;
 let interactionMode = "arrival";
+let lastTextareaValue = "";
+let pendingInputAction = null;
+let tracePanelHeight = TRACE_HEIGHT;
+let homeTracePanelHeight = HOME_TRACE_HEIGHT;
 let previousTrace = loadPreviousTrace() || createSimulatedPreviousTrace();
 
 function createEmptyState() {
@@ -73,6 +77,7 @@ function createEmptyState() {
     deletions: 0,
     repeated: new Map(),
     soundPeaks: [],
+    activeTraceByPosition: [],
     lastTypedCharacter: "",
   };
 }
@@ -149,6 +154,7 @@ function createSimulatedPreviousTrace() {
 
 function normaliseStoredCharacter(character) {
   if (character === " ") return "space";
+  if (character === "\n") return "line-break";
   return character.toLowerCase();
 }
 
@@ -170,6 +176,8 @@ function resetState() {
   currentAmplitude = 0;
   interactionMode = "typing";
   textarea.value = "";
+  lastTextareaValue = "";
+  pendingInputAction = null;
   textarea.disabled = false;
   textarea.hidden = false;
   typingControls.hidden = false;
@@ -193,6 +201,7 @@ function isPrintableKey(event) {
 
 function normaliseKey(key) {
   if (key === " ") return "space";
+  if (key === "\n") return "line-break";
   return key.toLowerCase();
 }
 
@@ -204,15 +213,60 @@ function pauseGap(delta) {
   return 220;
 }
 
-function recordKey(event) {
+function recordInputIntent(event) {
   if (frozen) {
     event.preventDefault();
     return;
   }
 
-  const printable = isPrintableKey(event);
-  const isDeletion = event.key === "Backspace" || event.key === "Delete";
-  if (!printable && !isDeletion) return;
+  const inputType = event.inputType || "";
+  const isInsertion = inputType.startsWith("insert");
+  const isDeletion = inputType.startsWith("delete");
+  if (!isInsertion && !isDeletion) {
+    pendingInputAction = null;
+    return;
+  }
+
+  const selectionStart = textarea.selectionStart ?? lastTextareaValue.length;
+  const selectionEnd = textarea.selectionEnd ?? selectionStart;
+  let deleteStart = selectionStart;
+  let deleteEnd = selectionEnd;
+
+  if (isDeletion && selectionStart === selectionEnd) {
+    if (inputType === "deleteContentBackward") {
+      deleteStart = Math.max(0, selectionStart - 1);
+      deleteEnd = selectionStart;
+    } else if (inputType === "deleteContentForward") {
+      deleteStart = selectionStart;
+      deleteEnd = Math.min(lastTextareaValue.length, selectionStart + 1);
+    }
+  }
+
+  pendingInputAction = {
+    inputType,
+    isInsertion,
+    isDeletion,
+    value: lastTextareaValue,
+    selectionStart,
+    selectionEnd,
+    deleteStart,
+    deleteEnd,
+  };
+}
+
+function recordInputChange() {
+  const currentValue = textarea.value;
+  const previousValue = lastTextareaValue;
+  const edit = getTextareaEdit(previousValue, currentValue);
+
+  updateCountAndButton();
+
+  if (!edit.deletedCount && !edit.insertedText) {
+    pendingInputAction = null;
+    renderLiveTrace();
+    renderHomeTrace();
+    return;
+  }
 
   const now = performance.now();
   if (!state.startedAt) state.startedAt = now;
@@ -223,21 +277,84 @@ function recordKey(event) {
     state.pauses.push({ at: now - state.startedAt, duration: delta, gap });
   }
 
-  if (printable) {
-    addTypedTraceItem(event.key, now, delta, gap);
-  } else if (isDeletion) {
-    markDeletedTraceItem(now, delta, gap);
+  if (edit.deletedCount) {
+    markDeletedTraceRange(edit.start, edit.start + edit.deletedCount, now, delta, gap);
   }
 
+  if (edit.insertedText) {
+    insertTraceTextAt(edit.insertedText, edit.start, now, delta, edit.deletedCount ? 0 : gap);
+  }
+
+  lastTextareaValue = currentValue;
+  pendingInputAction = null;
   state.lastAt = now;
   renderLiveTrace();
   renderHomeTrace();
 }
 
-function addTypedTraceItem(character, now, delta, gap) {
+function getTextareaEdit(previousValue, currentValue) {
+  const pendingEdit = getPendingTextareaEdit(previousValue, currentValue);
+  if (pendingEdit) return pendingEdit;
+
+  let start = 0;
+  while (
+    start < previousValue.length &&
+    start < currentValue.length &&
+    previousValue[start] === currentValue[start]
+  ) {
+    start += 1;
+  }
+
+  let previousEnd = previousValue.length;
+  let currentEnd = currentValue.length;
+  while (
+    previousEnd > start &&
+    currentEnd > start &&
+    previousValue[previousEnd - 1] === currentValue[currentEnd - 1]
+  ) {
+    previousEnd -= 1;
+    currentEnd -= 1;
+  }
+
+  return {
+    start,
+    deletedCount: previousEnd - start,
+    insertedText: currentValue.slice(start, currentEnd),
+  };
+}
+
+function getPendingTextareaEdit(previousValue, currentValue) {
+  if (!pendingInputAction || pendingInputAction.value !== previousValue) return null;
+
+  const deleteStart = clamp(pendingInputAction.deleteStart, 0, previousValue.length);
+  const deleteEnd = clamp(pendingInputAction.deleteEnd, deleteStart, previousValue.length);
+  const deletedCount = deleteEnd - deleteStart;
+  const insertedCount = currentValue.length - (previousValue.length - deletedCount);
+  if (insertedCount < 0) return null;
+
+  const insertedText = currentValue.slice(deleteStart, deleteStart + insertedCount);
+  const expectedValue = `${previousValue.slice(0, deleteStart)}${insertedText}${previousValue.slice(deleteEnd)}`;
+  if (expectedValue !== currentValue) return null;
+
+  return {
+    start: deleteStart,
+    deletedCount,
+    insertedText,
+  };
+}
+
+function insertTraceTextAt(text, position, now, delta, gap) {
+  const items = Array.from(text).map((character, index) => createTypedTraceItem(character, now, index === 0 ? delta : 0, index === 0 ? gap : 0));
+  if (!items.length) return;
+  state.activeTraceByPosition.splice(position, 0, ...items);
+  state.traceItems.push(...items);
+  state.events.push(...items);
+}
+
+function createTypedTraceItem(character, now, delta, gap) {
   const normalized = normaliseKey(character);
   const previous = state.lastTypedCharacter;
-  const repeated = previous === normalized && normalized !== "space";
+  const repeated = previous === normalized && normalized !== "space" && normalized !== "line-break";
 
   state.keyFrequency.set(normalized, (state.keyFrequency.get(normalized) || 0) + 1);
   if (repeated) state.repeated.set(normalized, (state.repeated.get(normalized) || 0) + 1);
@@ -256,15 +373,24 @@ function addTypedTraceItem(character, now, delta, gap) {
     createdAt: now,
   };
 
-  state.traceItems.push(item);
-  state.events.push(item);
   state.lastTypedCharacter = normalized;
+  return item;
 }
 
-function markDeletedTraceItem(now, delta, gap) {
-  const target = [...state.traceItems].reverse().find((item) => item.action === "type" && !item.deleted && item.normalized !== "space");
+function markDeletedTraceRange(start, end, now, delta, gap) {
+  const deleteStart = clamp(start, 0, state.activeTraceByPosition.length);
+  const deleteEnd = clamp(end, deleteStart, state.activeTraceByPosition.length);
+  if (deleteEnd <= deleteStart) return;
 
-  state.deletions += 1;
+  const deletedItems = state.activeTraceByPosition.slice(deleteStart, deleteEnd);
+  deletedItems.forEach((item, index) => {
+    item.deleted = true;
+    item.deletedAt = now;
+    item.deletePauseGap = index === 0 ? gap : 0;
+  });
+
+  state.activeTraceByPosition.splice(deleteStart, deleteEnd - deleteStart);
+  state.deletions += deletedItems.length;
   state.keyFrequency.set("backspace", (state.keyFrequency.get("backspace") || 0) + 1);
   state.events.push({
     action: "delete",
@@ -274,16 +400,12 @@ function markDeletedTraceItem(now, delta, gap) {
     delta,
     pauseGap: gap,
     amplitude: currentAmplitude,
+    deletedCount: deletedItems.length,
     createdAt: now,
   });
 
-  if (target) {
-    target.deleted = true;
-    target.deletedAt = now;
-    target.deletePauseGap = gap;
-  }
-
-  state.lastTypedCharacter = "";
+  const previousItem = state.activeTraceByPosition[deleteStart - 1];
+  state.lastTypedCharacter = previousItem ? previousItem.normalized : "";
 }
 
 function updateCountAndButton() {
@@ -384,7 +506,89 @@ function monitorAmplitude() {
   soundFrame = requestAnimationFrame(monitorAmplitude);
 }
 
+function getTraceLayoutSettings(traceItems, home = false) {
+  const traceLength = traceItems.length;
+  const compact = traceLength > 240;
+  const dense = traceLength > 360;
+
+  if (home) {
+    return {
+      compact,
+      dense,
+      lineHeight: dense ? 24 : compact ? 30 : 42,
+      characterAdvance: dense ? 8 : compact ? 12 : 19,
+      spaceAdvance: dense ? 12 : compact ? 16 : 26,
+      pauseScale: dense ? 0.16 : compact ? 0.28 : 0.55,
+      left: 42,
+      top: 92,
+      right: 42,
+      bottom: 44,
+      minHeight: HOME_TRACE_HEIGHT,
+      width: HOME_TRACE_WIDTH,
+    };
+  }
+
+  return {
+    compact,
+    dense,
+    lineHeight: dense ? 32 : compact ? 38 : LINE_HEIGHT,
+    characterAdvance: dense ? 12 : compact ? 15 : BASE_ADVANCE,
+    spaceAdvance: dense ? 18 : compact ? 22 : SPACE_ADVANCE,
+    pauseScale: dense ? 0.32 : compact ? 0.45 : 1,
+    left: TRACE_LEFT,
+    top: TRACE_TOP,
+    right: TRACE_RIGHT,
+    bottom: 76,
+    minHeight: TRACE_HEIGHT,
+    width: TRACE_WIDTH,
+  };
+}
+
+function measureTraceHeight(traceItems, home = false) {
+  if (!traceItems.length) return home ? HOME_TRACE_HEIGHT : TRACE_HEIGHT;
+
+  const settings = getTraceLayoutSettings(traceItems, home);
+  let x = settings.left;
+  let y = settings.top;
+  let maxY = y;
+  const maxX = settings.width - settings.right;
+
+  traceItems.forEach((item) => {
+    const advance = item.normalized === "space" ? settings.spaceAdvance : settings.characterAdvance;
+    const pauseLimit = home
+      ? settings.dense ? 44 : settings.compact ? 72 : 122
+      : settings.dense ? 74 : settings.compact ? 104 : 220;
+    x += item.pauseGap ? Math.min(item.pauseGap * settings.pauseScale, pauseLimit) : 0;
+
+    if (x > maxX - advance) {
+      x = settings.left;
+      y += settings.lineHeight;
+    }
+
+    if (item.normalized === "line-break") {
+      x = settings.left;
+      y += settings.lineHeight;
+      maxY = Math.max(maxY, y);
+      return;
+    }
+
+    if (item.normalized === "space") {
+      x += settings.spaceAdvance;
+      maxY = Math.max(maxY, y);
+      return;
+    }
+
+    x += item.repeated ? settings.characterAdvance * 0.72 : advance;
+    maxY = Math.max(maxY, y + (item.deleted ? 14 : 0));
+  });
+
+  return Math.ceil(Math.max(settings.minHeight, maxY + settings.bottom));
+}
+
 function renderLiveTrace() {
+  tracePanelHeight = measureTraceHeight(state.traceItems, false);
+  liveTrace.setAttribute("viewBox", `0 0 ${TRACE_WIDTH} ${tracePanelHeight}`);
+  liveTrace.setAttribute("height", String(tracePanelHeight));
   liveTrace.replaceChildren();
   drawTraceBackground();
   drawTraceItems();
@@ -394,8 +598,8 @@ function renderLiveTrace() {
 }
 
 function drawTraceBackground() {
-  svgRect(0, 0, TRACE_WIDTH, TRACE_HEIGHT, COLORS.panel, "none");
-  for (let y = 34; y < TRACE_HEIGHT - 34; y += 18) {
+  svgRect(0, 0, TRACE_WIDTH, tracePanelHeight, COLORS.panel, "none");
+  for (let y = 34; y < tracePanelHeight - 34; y += 18) {
     svgLine(36, y, TRACE_WIDTH - 36, y, COLORS.rule, { width: 0.8, opacity: 0.58 });
   }
   svgText("INPUT SURFACE", 48, 48, { size: 12, fill: COLORS.text, opacity: 0.72, family: UI_FONT, spacing: 2 });
@@ -437,9 +641,10 @@ function drawTraceItems() {
       y += lineHeight;
     }
 
-    if (y > TRACE_HEIGHT - 54) {
-      y = TRACE_TOP + ((index % Math.max(4, Math.floor((TRACE_HEIGHT - TRACE_TOP - 54) / lineHeight))) * lineHeight);
-      x = TRACE_LEFT + ((index % 13) * (dense ? 7 : compact ? 9 : 12));
+    if (item.normalized === "line-break") {
+      x = TRACE_LEFT;
+      y += lineHeight;
+      return;
     }
 
     if (item.pauseGap) {
@@ -487,7 +692,7 @@ function drawSoundNeedles() {
   state.soundPeaks.slice(-70).forEach((peak) => {
     const x = TRACE_LEFT + (peak.at / duration) * width;
     const height = clamp(peak.amplitude * 260, 8, 44);
-    svgLine(x, TRACE_HEIGHT - 64, x, TRACE_HEIGHT - 64 - height, COLORS.active, { width: 1.4, opacity: 0.42 });
+    svgLine(x, tracePanelHeight - 64, x, tracePanelHeight - 64 - height, COLORS.active, { width: 1.4, opacity: 0.42 });
   });
 }
 
@@ -510,9 +715,12 @@ function scheduleSettleRender() {
 function renderHomeTrace() {
   const traceItems = interactionMode === "arrival" ? previousTrace.traceItems : state.traceItems;
   const actionCount = interactionMode === "arrival" ? previousTrace.actionCount || traceItems.length : state.events.length;
+  homeTracePanelHeight = measureTraceHeight(traceItems, true);
+  homeLiveTrace.setAttribute("viewBox", `0 0 ${HOME_TRACE_WIDTH} ${homeTracePanelHeight}`);
+  homeLiveTrace.setAttribute("height", String(homeTracePanelHeight));
   homeLiveTrace.replaceChildren();
-  homeSvgRect(0, 0, HOME_TRACE_WIDTH, HOME_TRACE_HEIGHT, COLORS.panel, "none");
-  for (let y = 26; y < HOME_TRACE_HEIGHT - 24; y += 16) {
+  homeSvgRect(0, 0, HOME_TRACE_WIDTH, homeTracePanelHeight, COLORS.panel, "none");
+  for (let y = 26; y < homeTracePanelHeight - 24; y += 16) {
     homeSvgLine(28, y, HOME_TRACE_WIDTH - 28, y, COLORS.rule, { width: 0.8, opacity: 0.52 });
   }
   homeSvgText(`${actionCount} actions / source sentence withheld`, HOME_TRACE_WIDTH - 340, 38, {
@@ -563,9 +771,10 @@ function renderHomeTrace() {
       y += lineHeight;
     }
 
-    if (y > HOME_TRACE_HEIGHT - 28) {
-      y = 92 + ((index % Math.max(3, Math.floor((HOME_TRACE_HEIGHT - 92 - 28) / lineHeight))) * lineHeight);
-      x = 42 + ((index % 17) * (dense ? 5 : compact ? 7 : 9));
+    if (item.normalized === "line-break") {
+      x = 42;
+      y += lineHeight;
+      return;
     }
 
     if (item.pauseGap) {
@@ -784,12 +993,8 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
-textarea.addEventListener("keydown", recordKey);
-textarea.addEventListener("input", () => {
-  updateCountAndButton();
-  renderLiveTrace();
-  renderHomeTrace();
-});
+textarea.addEventListener("beforeinput", recordInputIntent);
+textarea.addEventListener("input", recordInputChange);
 leaveButton.addEventListener("click", holdTrace);
 respondButton.addEventListener("click", resetState);
 typeAgainButton.addEventListener("click", resetState);
