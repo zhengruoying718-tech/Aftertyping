@@ -263,7 +263,7 @@ textarea {
   border-bottom: 1px solid var(--line);
   border-top: 1px solid var(--line-soft);
   color: var(--primary);
-  font-family: var(--stamp);
+  font-family: var(--ui);
   font-size: 18pt;
   letter-spacing: 0.01em;
   line-height: 1.25;
