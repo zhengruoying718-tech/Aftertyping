@@ -518,9 +518,6 @@ textarea::placeholder {
   color: var(--black);
 }
 
-.result-stage.is-sound-score .side-note-right {
-  visibility: hidden;
-}
 
 .sound-score-system {
   border-bottom: 1px solid var(--line-soft);

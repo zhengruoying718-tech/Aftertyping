@@ -12,6 +12,10 @@ const textTracePanel = document.querySelector("#text-trace-panel");
 const soundScorePanel = document.querySelector("#sound-score-panel");
 const textTraceTab = document.querySelector("#text-trace-tab");
 const soundScoreTab = document.querySelector("#sound-score-tab");
+const leftNoteNumber = document.querySelector("#left-note-number");
+const leftNoteText = document.querySelector("#left-note-text");
+const rightNoteNumber = document.querySelector("#right-note-number");
+const rightNoteText = document.querySelector("#right-note-text");
 const homeLiveTrace = document.querySelector("#home-live-trace");
 const homeLivePrimary = document.querySelector("#home-live-primary");
 const homeLiveSecondary = document.querySelector("#home-live-secondary");
@@ -84,6 +88,7 @@ let pendingInputAction = null;
 let tracePanelHeight = TRACE_HEIGHT;
 let homeTracePanelHeight = HOME_TRACE_HEIGHT;
 let previousTrace = loadPreviousTrace() || createSimulatedPreviousTrace();
+let currentResultView = "text";
 
 function createEmptyState() {
   return {
@@ -977,18 +982,30 @@ function setResultView(view) {
   textTraceTab.setAttribute("aria-selected", String(!showSound));
   soundScoreTab.setAttribute("aria-selected", String(showSound));
   resultStage.classList.toggle("is-sound-score", showSound);
+  currentResultView = showSound ? "sound" : "text";
+
+  if (showSound) {
+    leftNoteNumber.textContent = "00 / SOUND";
+    leftNoteText.textContent = "Keyboard sound is translated into a behavioural score. What remains is not language, but rhythm, hesitation, revision, fluency, and structural change.";
+    rightNoteNumber.textContent = "03 / SOUND RULES";
+    rightNoteText.textContent = "Blue marks record input. Yellow bars record thinking pauses. Orange-red bars record revision. Green diamonds record fluent bursts. Purple marks record structural shifts.";
+  } else {
+    leftNoteNumber.textContent = "00 / AFTER";
+    leftNoteText.textContent = "The sentence is no longer the main object. What remains is the pressure, correction, and rhythm of the action.";
+    rightNoteNumber.textContent = "03 / RULES";
+    rightNoteText.textContent = "Deleted letters remain as faint interruptions. Repetition thickens. Pauses open measured distances in the line.";
+  }
 }
 
 function renderSoundScore() {
   const marks = layoutSoundScoreMarks(buildSoundScoreMarks());
-  const rulesTop = Math.max(SOUND_SCORE_MIN_HEIGHT - 120, marks.notationBottom + 22);
-  const scoreHeight = rulesTop + 108;
+  const scoreHeight = Math.max(SOUND_SCORE_MIN_HEIGHT, marks.notationBottom + 28);
   soundScore.setAttribute("viewBox", `0 0 ${SOUND_SCORE_WIDTH} ${scoreHeight}`);
   soundScore.setAttribute("height", String(scoreHeight));
   soundScore.replaceChildren();
 
   soundSvgRect(0, 0, SOUND_SCORE_WIDTH, scoreHeight, SOUND_SCORE_COLORS.background, "none");
-  for (let y = 74; y < rulesTop - 18; y += 12) {
+  for (let y = 74; y < scoreHeight - 28; y += 12) {
     soundSvgLine(44, y, SOUND_SCORE_WIDTH - 44, y, SOUND_SCORE_COLORS.guide, { width: 0.65, opacity: 0.4 });
   }
 
@@ -1012,8 +1029,6 @@ function renderSoundScore() {
   } else {
     marks.items.forEach((mark) => drawSoundScoreMark(mark));
   }
-
-  drawSoundScoreRules(rulesTop);
 }
 
 function buildSoundScoreMarks() {
@@ -1218,22 +1233,6 @@ function drawSoundScoreMark(mark) {
   }
 }
 
-function drawSoundScoreRules(y) {
-  soundSvgLine(58, y, SOUND_SCORE_WIDTH - 58, y, SOUND_SCORE_COLORS.guide, { width: 0.7, opacity: 0.5 });
-  soundSvgText("SOUND RULES", 58, y + 28, {
-    size: 9,
-    fill: SOUND_SCORE_COLORS.label,
-    family: UI_FONT,
-    weight: 700,
-    spacing: 1.4,
-  });
-  soundSvgText("Blue vertical marks record input.", 58, y + 50, { size: 9, fill: SOUND_SCORE_COLORS.secondary, family: UI_FONT, spacing: 0.4 });
-  soundSvgText("Yellow bars record thinking pauses.", 280, y + 50, { size: 9, fill: SOUND_SCORE_COLORS.secondary, family: UI_FONT, spacing: 0.4 });
-  soundSvgText("Orange-red bars record revision.", 532, y + 50, { size: 9, fill: SOUND_SCORE_COLORS.secondary, family: UI_FONT, spacing: 0.4 });
-  soundSvgText("Green diamonds record fluent bursts.", 58, y + 70, { size: 9, fill: SOUND_SCORE_COLORS.secondary, family: UI_FONT, spacing: 0.4 });
-  soundSvgText("Purple marks record structural shifts.", 348, y + 70, { size: 9, fill: SOUND_SCORE_COLORS.secondary, family: UI_FONT, spacing: 0.4 });
-}
-
 function categoryOrder(type) {
   return ["thinking", "revision", "input", "flow", "shift"].indexOf(type);
 }
@@ -1397,28 +1396,55 @@ function svgText(content, x, y, options = {}) {
 }
 
 
-function getTraceSvgClone() {
-  const clone = liveTrace.cloneNode(true);
-  const viewBox = clone.getAttribute("viewBox") || `0 0 ${TRACE_WIDTH} ${TRACE_HEIGHT}`;
-  const [, , viewBoxWidth = TRACE_WIDTH, viewBoxHeight = TRACE_HEIGHT] = viewBox.split(/\s+/).map(Number);
+function getCurrentExportTarget() {
+  const isSound = currentResultView === "sound";
+  const selector = isSound ? "#sound-score" : "#live-trace";
+  const svg = document.querySelector(selector);
+  const label = isSound ? "Sound Score" : "Text Trace";
+  const slug = isSound ? "sound-score" : "text-trace";
+  const background = isSound ? SOUND_SCORE_COLORS.background : COLORS.panel;
+
+  if (!svg) {
+    console.error(`Export target missing for ${label}.`, { currentResultView, selector });
+    window.alert("Export failed. Please try again.");
+    return null;
+  }
+
+  return { svg, label, slug, background, selector };
+}
+
+function getExportSvgClone() {
+  const target = getCurrentExportTarget();
+  if (!target) return null;
+
+  const clone = target.svg.cloneNode(true);
+  const fallbackViewBox = target.svg === soundScore
+    ? `0 0 ${SOUND_SCORE_WIDTH} ${SOUND_SCORE_MIN_HEIGHT}`
+    : `0 0 ${TRACE_WIDTH} ${TRACE_HEIGHT}`;
+  const viewBox = clone.getAttribute("viewBox") || fallbackViewBox;
+  const [, , viewBoxWidth, viewBoxHeight] = viewBox.split(/\s+/).map(Number);
+
   clone.setAttribute("xmlns", SVG_NS);
   clone.setAttribute("width", String(viewBoxWidth));
   clone.setAttribute("height", String(viewBoxHeight));
   clone.setAttribute("viewBox", viewBox);
   clone.setAttribute("role", "img");
-  clone.setAttribute("aria-label", "Aftertyping exported trace panel");
+  clone.setAttribute("aria-label", `Aftertyping exported ${target.label}`);
 
   const title = document.createElementNS(SVG_NS, "title");
-  title.textContent = "Aftertyping trace panel";
+  title.textContent = `Aftertyping ${target.label}`;
   clone.prepend(title);
 
-  return clone;
+  return { clone, target, viewBoxWidth, viewBoxHeight };
 }
 
-function serializeTraceSvg() {
-  const clone = getTraceSvgClone();
-  const serialized = new XMLSerializer().serializeToString(clone);
-  return serialized.startsWith("<?xml") ? serialized : `<?xml version="1.0" encoding="UTF-8"?>\n${serialized}`;
+function serializeSelectedSvg() {
+  const exportData = getExportSvgClone();
+  if (!exportData) return null;
+
+  const serialized = new XMLSerializer().serializeToString(exportData.clone);
+  const source = serialized.startsWith("<?xml") ? serialized : `<?xml version="1.0" encoding="UTF-8"?>\n${serialized}`;
+  return { ...exportData, source };
 }
 
 function downloadBlob(blob, filename) {
@@ -1433,32 +1459,34 @@ function downloadBlob(blob, filename) {
 }
 
 function downloadTraceSvg() {
-  const source = serializeTraceSvg();
-  const blob = new Blob([source], { type: "image/svg+xml;charset=utf-8" });
-  downloadBlob(blob, "aftertyping-trace.svg");
+  const exportData = serializeSelectedSvg();
+  if (!exportData) return;
+
+  const blob = new Blob([exportData.source], { type: "image/svg+xml;charset=utf-8" });
+  downloadBlob(blob, `aftertyping-${exportData.target.slug}.svg`);
 }
 
 function downloadTracePng() {
-  const source = serializeTraceSvg();
-  const svgBlob = new Blob([source], { type: "image/svg+xml;charset=utf-8" });
+  const exportData = serializeSelectedSvg();
+  if (!exportData) return;
+
+  const svgBlob = new Blob([exportData.source], { type: "image/svg+xml;charset=utf-8" });
   const url = URL.createObjectURL(svgBlob);
   const image = new Image();
-  const viewBox = liveTrace.getAttribute("viewBox") || `0 0 ${TRACE_WIDTH} ${TRACE_HEIGHT}`;
-  const [, , viewBoxWidth = TRACE_WIDTH, viewBoxHeight = TRACE_HEIGHT] = viewBox.split(/\s+/).map(Number);
   const scale = 2;
 
   image.onload = () => {
     const canvas = document.createElement("canvas");
-    canvas.width = viewBoxWidth * scale;
-    canvas.height = viewBoxHeight * scale;
+    canvas.width = exportData.viewBoxWidth * scale;
+    canvas.height = exportData.viewBoxHeight * scale;
     const context = canvas.getContext("2d");
-    context.fillStyle = COLORS.panel;
+    context.fillStyle = exportData.target.background;
     context.fillRect(0, 0, canvas.width, canvas.height);
     context.drawImage(image, 0, 0, canvas.width, canvas.height);
     URL.revokeObjectURL(url);
 
     const link = document.createElement("a");
-    link.download = `aftertyping-trace-${Date.now()}.png`;
+    link.download = `aftertyping-${exportData.target.slug}.png`;
     link.href = canvas.toDataURL("image/png");
     document.body.appendChild(link);
     link.click();
@@ -1466,6 +1494,8 @@ function downloadTracePng() {
   };
 
   image.onerror = () => {
+    console.error(`Export failed while rendering ${exportData.target.label} PNG.`);
+    window.alert("Export failed. Please try again.");
     URL.revokeObjectURL(url);
   };
 
