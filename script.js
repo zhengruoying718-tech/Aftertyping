@@ -43,7 +43,7 @@ const HOME_TRACE_WIDTH = 1120;
 const HOME_TRACE_HEIGHT = 230;
 const SOUND_SCORE_WIDTH = 1120;
 const SOUND_SCORE_MIN_HEIGHT = 430;
-const TRACE_FONT = '"Stamp Typo Regular", "Courier New", monospace';
+const TRACE_FONT = '"StampTypo", serif';
 const UI_FONT = 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
 
 const RESULT_NOTES = {
