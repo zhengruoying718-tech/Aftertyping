@@ -46,6 +46,21 @@ const SOUND_SCORE_MIN_HEIGHT = 430;
 const TRACE_FONT = '"Stamp Typo Regular", "Courier New", monospace';
 const UI_FONT = 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
 
+const RESULT_NOTES = {
+  text: {
+    leftNumber: "00 / AFTER",
+    leftText: "The sentence is no longer the main object. What remains is the pressure, correction, and rhythm of the action.",
+    rightNumber: "03 / RULES",
+    rightText: "Deleted letters remain as faint interruptions. Repetition thickens. Pauses open measured distances in the line.",
+  },
+  sound: {
+    leftNumber: "00 / SOUND",
+    leftText: "Keyboard sound is translated into a behavioural score. What remains is not language, but rhythm, hesitation, revision, fluency, and structural change.",
+    rightNumber: "03 / SOUND RULES",
+    rightText: "Blue marks record input. Yellow bars record thinking pauses. Orange-red bars record revision. Green diamonds record fluent bursts. Purple marks record structural shifts.",
+  },
+};
+
 textarea.maxLength = MAX_CHARACTERS;
 
 const SOUND_SCORE_COLORS = {
@@ -984,17 +999,11 @@ function setResultView(view) {
   resultStage.classList.toggle("is-sound-score", showSound);
   currentResultView = showSound ? "sound" : "text";
 
-  if (showSound) {
-    leftNoteNumber.textContent = "00 / SOUND";
-    leftNoteText.textContent = "Keyboard sound is translated into a behavioural score. What remains is not language, but rhythm, hesitation, revision, fluency, and structural change.";
-    rightNoteNumber.textContent = "03 / SOUND RULES";
-    rightNoteText.textContent = "Blue marks record input. Yellow bars record thinking pauses. Orange-red bars record revision. Green diamonds record fluent bursts. Purple marks record structural shifts.";
-  } else {
-    leftNoteNumber.textContent = "00 / AFTER";
-    leftNoteText.textContent = "The sentence is no longer the main object. What remains is the pressure, correction, and rhythm of the action.";
-    rightNoteNumber.textContent = "03 / RULES";
-    rightNoteText.textContent = "Deleted letters remain as faint interruptions. Repetition thickens. Pauses open measured distances in the line.";
-  }
+  const notes = showSound ? RESULT_NOTES.sound : RESULT_NOTES.text;
+  leftNoteNumber.textContent = notes.leftNumber;
+  leftNoteText.textContent = notes.leftText;
+  rightNoteNumber.textContent = notes.rightNumber;
+  rightNoteText.textContent = notes.rightText;
 }
 
 function renderSoundScore() {
