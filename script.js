@@ -384,16 +384,6 @@ function recordSoundScoreEdit(edit, now, delta) {
     });
   }
 
-  if (delta > 2500) {
-    state.soundScoreActions.push({
-      type: "shift",
-      timestamp: at,
-      duration: delta,
-      amplitude,
-      source: "pause",
-    });
-  }
-
   if (edit.deletedCount) {
     state.soundScoreActions.push({
       type: "revision",
@@ -410,6 +400,16 @@ function recordSoundScoreEdit(edit, now, delta) {
   }
 
   if (!edit.insertedText) return;
+
+  if (delta > 2500) {
+    state.soundScoreActions.push({
+      type: "shift",
+      timestamp: at,
+      duration: delta,
+      amplitude,
+      source: "pause",
+    });
+  }
 
   if (state.pendingRevisionShift) {
     state.soundScoreActions.push({
@@ -440,6 +440,7 @@ function recordSoundScoreEdit(edit, now, delta) {
       timestamp,
       duration: 0,
       amplitude,
+      interval: index === 0 ? delta : 120 + ((index % 5) * 18),
       source: "keydown",
     });
   });
@@ -975,22 +976,24 @@ function setResultView(view) {
   soundScoreTab.classList.toggle("is-selected", showSound);
   textTraceTab.setAttribute("aria-selected", String(!showSound));
   soundScoreTab.setAttribute("aria-selected", String(showSound));
+  resultStage.classList.toggle("is-sound-score", showSound);
 }
 
 function renderSoundScore() {
   const marks = layoutSoundScoreMarks(buildSoundScoreMarks());
-  const scoreHeight = Math.max(SOUND_SCORE_MIN_HEIGHT, marks.height);
+  const rulesTop = Math.max(SOUND_SCORE_MIN_HEIGHT - 120, marks.notationBottom + 22);
+  const scoreHeight = rulesTop + 108;
   soundScore.setAttribute("viewBox", `0 0 ${SOUND_SCORE_WIDTH} ${scoreHeight}`);
   soundScore.setAttribute("height", String(scoreHeight));
   soundScore.replaceChildren();
 
   soundSvgRect(0, 0, SOUND_SCORE_WIDTH, scoreHeight, SOUND_SCORE_COLORS.background, "none");
-  for (let y = 74; y < scoreHeight - 28; y += 26) {
-    soundSvgLine(44, y, SOUND_SCORE_WIDTH - 44, y, SOUND_SCORE_COLORS.guide, { width: 0.8, opacity: 0.72 });
+  for (let y = 74; y < rulesTop - 18; y += 12) {
+    soundSvgLine(44, y, SOUND_SCORE_WIDTH - 44, y, SOUND_SCORE_COLORS.guide, { width: 0.65, opacity: 0.4 });
   }
 
   soundSvgText("02 / KEYBOARD SOUND SCORE", 58, 48, {
-    size: 15,
+    size: 13,
     fill: SOUND_SCORE_COLORS.label,
     family: UI_FONT,
     weight: 700,
@@ -1000,16 +1003,17 @@ function renderSoundScore() {
   drawSoundScoreLegend();
 
   if (!marks.items.length) {
-    soundSvgText("no keyboard actions recorded", 58, 156, {
-      size: 13,
+    soundSvgText("no keyboard actions recorded", 58, 132, {
+      size: 12,
       fill: SOUND_SCORE_COLORS.secondary,
       family: UI_FONT,
       spacing: 1.1,
     });
-    return;
+  } else {
+    marks.items.forEach((mark) => drawSoundScoreMark(mark));
   }
 
-  marks.items.forEach((mark) => drawSoundScoreMark(mark));
+  drawSoundScoreRules(rulesTop);
 }
 
 function buildSoundScoreMarks() {
@@ -1037,6 +1041,7 @@ function buildFlowMarks(actions) {
           duration: burst[burst.length - 1].timestamp - burst[0].timestamp,
           amplitude: middle.amplitude || 0.12,
           source: "burst",
+          count: burst.length,
         });
       }
     }
@@ -1097,13 +1102,13 @@ function layoutSoundScoreMarks(actions) {
   const items = [];
   const left = 58;
   const right = SOUND_SCORE_WIDTH - 58;
-  const rowHeight = 72;
+  const rowHeight = 38;
   let x = left;
-  let y = 144;
+  let y = 116;
   let previousAt = 0;
 
   actions.forEach((action) => {
-    const gap = clamp((action.timestamp - previousAt) / 18, 10, 76);
+    const gap = clamp((action.timestamp - previousAt) / 32, 7, 70);
     const size = getSoundScoreMarkSize(action);
     if (x + gap + size.width > right) {
       x = left;
@@ -1117,25 +1122,44 @@ function layoutSoundScoreMarks(actions) {
     previousAt = action.timestamp;
   });
 
-  return { items, height: y + rowHeight + 40 };
+  return { items, notationBottom: y + rowHeight };
 }
 
 function getSoundScoreMarkSize(action) {
   if (action.type === "thinking") {
-    return { width: action.duration > 2500 ? 104 : action.duration > 1500 ? 72 : 42, height: 8 };
+    return { width: action.duration >= 2500 ? 66 : action.duration >= 1500 ? 44 : 22, height: 3 };
   }
 
   if (action.type === "revision") {
-    return { width: clamp((action.duration || 1) * 12, 34, 132), height: 10 };
+    const count = action.duration || 1;
+    return { width: count >= 5 ? 48 : count >= 2 ? 28 : 14, height: 5 };
   }
 
-  if (action.type === "flow") return { width: 22, height: 22 };
-  if (action.type === "shift") return { width: 16, height: 42 };
+  if (action.type === "flow") {
+    const count = action.count || 6;
+    const size = count >= 15 ? 15 : count >= 9 ? 12 : 9;
+    return { width: size, height: size };
+  }
+
+  if (action.type === "shift") {
+    const height = action.source === "pause" ? 24 : action.source === "revision" ? 22 : 18;
+    return { width: 8, height };
+  }
 
   return {
-    width: 9,
-    height: clamp((action.amplitude || 0.12) * 90, 16, 42),
+    width: 3,
+    height: getInputMarkHeight(action),
   };
+}
+
+function getInputMarkHeight(action) {
+  const amplitude = action.amplitude || 0;
+  if (amplitude > 0.025) return clamp(5 + amplitude * 70, 5, 16);
+
+  const interval = action.interval || 180;
+  const intervalVariation = clamp((260 - interval) / 28, -3, 5);
+  const timestampVariation = ((Math.floor((action.timestamp || 0) / 37) % 5) - 2) * 0.9;
+  return clamp(10 + intervalVariation + timestampVariation, 5, 16);
 }
 
 function drawSoundScoreLegend() {
@@ -1146,48 +1170,68 @@ function drawSoundScoreLegend() {
     ["FLOW", SOUND_SCORE_COLORS.flow],
     ["SHIFT", SOUND_SCORE_COLORS.shift],
   ];
-  let x = SOUND_SCORE_WIDTH - 430;
+  let x = SOUND_SCORE_WIDTH - 360;
 
   legend.forEach(([label, color]) => {
-    soundSvgRect(x, 36, 10, 10, color, "none");
-    soundSvgText(label, x + 16, 45, {
-      size: 9,
+    soundSvgRect(x, 39, 5, 5, color, "none", { opacity: 0.74 });
+    soundSvgText(label, x + 10, 44, {
+      size: 7,
       fill: SOUND_SCORE_COLORS.secondary,
       family: UI_FONT,
-      spacing: 1.2,
+      spacing: 1.15,
+      opacity: 0.84,
     });
-    x += label === "THINKING" || label === "REVISION" ? 96 : 74;
+    x += label === "THINKING" || label === "REVISION" ? 80 : 58;
   });
 }
 
 function drawSoundScoreMark(mark) {
   if (mark.type === "input") {
-    const opacity = clamp(0.5 + (mark.amplitude || 0.12) * 3, 0.58, 1);
-    soundSvgRect(mark.x, mark.y - mark.height, mark.width, mark.height, SOUND_SCORE_COLORS.input, "none", { opacity });
+    const opacity = clamp(0.54 + (mark.amplitude || 0.12) * 2.4, 0.58, 0.92);
+    soundSvgRect(mark.x, mark.y - mark.height / 2, mark.width, mark.height, SOUND_SCORE_COLORS.input, "none", { opacity });
     return;
   }
 
   if (mark.type === "thinking") {
-    soundSvgRect(mark.x, mark.y - 6, mark.width, mark.height, SOUND_SCORE_COLORS.thinking, "none", { opacity: 0.92 });
+    soundSvgRect(mark.x, mark.y - 1.5, mark.width, mark.height, SOUND_SCORE_COLORS.thinking, "none", { opacity: 0.86 });
     return;
   }
 
   if (mark.type === "revision") {
-    soundSvgRect(mark.x, mark.y - 8, mark.width, mark.height, SOUND_SCORE_COLORS.revision, "none", { opacity: 0.94 });
+    soundSvgRect(mark.x, mark.y - 2.5, mark.width, mark.height, SOUND_SCORE_COLORS.revision, "none", { opacity: 0.9 });
     return;
   }
 
   if (mark.type === "flow") {
     const cx = mark.x + mark.width / 2;
-    const cy = mark.y - 11;
-    soundSvgPolygon(`${cx},${cy - 15} ${cx + 10},${cy} ${cx},${cy + 15} ${cx - 10},${cy}`, SOUND_SCORE_COLORS.flow, { opacity: 0.94 });
+    const cy = mark.y;
+    const half = mark.height / 2;
+    soundSvgPolygon(`${cx},${cy - half} ${cx + half},${cy} ${cx},${cy + half} ${cx - half},${cy}`, SOUND_SCORE_COLORS.flow, { opacity: 0.88 });
     return;
   }
 
   if (mark.type === "shift") {
     const cx = mark.x + mark.width / 2;
-    soundSvgPolygon(`${cx},${mark.y - mark.height} ${cx + 9},${mark.y - mark.height / 2} ${cx},${mark.y + 2} ${cx - 9},${mark.y - mark.height / 2}`, SOUND_SCORE_COLORS.shift, { opacity: 0.94 });
+    const halfWidth = mark.width / 2;
+    const halfHeight = mark.height / 2;
+    soundSvgPolygon(`${cx},${mark.y - halfHeight} ${cx + halfWidth},${mark.y} ${cx},${mark.y + halfHeight} ${cx - halfWidth},${mark.y}`, SOUND_SCORE_COLORS.shift, { opacity: 0.88 });
   }
+}
+
+function drawSoundScoreRules(y) {
+  soundSvgLine(58, y, SOUND_SCORE_WIDTH - 58, y, SOUND_SCORE_COLORS.guide, { width: 0.7, opacity: 0.5 });
+  soundSvgText("SOUND RULES", 58, y + 28, {
+    size: 9,
+    fill: SOUND_SCORE_COLORS.label,
+    family: UI_FONT,
+    weight: 700,
+    spacing: 1.4,
+  });
+  soundSvgText("Blue vertical marks record input.", 58, y + 50, { size: 9, fill: SOUND_SCORE_COLORS.secondary, family: UI_FONT, spacing: 0.4 });
+  soundSvgText("Yellow bars record thinking pauses.", 280, y + 50, { size: 9, fill: SOUND_SCORE_COLORS.secondary, family: UI_FONT, spacing: 0.4 });
+  soundSvgText("Orange-red bars record revision.", 532, y + 50, { size: 9, fill: SOUND_SCORE_COLORS.secondary, family: UI_FONT, spacing: 0.4 });
+  soundSvgText("Green diamonds record fluent bursts.", 58, y + 70, { size: 9, fill: SOUND_SCORE_COLORS.secondary, family: UI_FONT, spacing: 0.4 });
+  soundSvgText("Purple marks record structural shifts.", 348, y + 70, { size: 9, fill: SOUND_SCORE_COLORS.secondary, family: UI_FONT, spacing: 0.4 });
 }
 
 function categoryOrder(type) {
